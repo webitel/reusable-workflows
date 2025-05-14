@@ -1,0 +1,171 @@
+name: Prepare
+
+on:
+  workflow_call:
+    inputs:
+      only-dependencies:
+        default: false
+        type: boolean
+
+      development-branch:
+        description: Name of the development branch
+        required: false
+        default: main
+        type: string
+
+      triggered-branch:
+        description: Name of the triggered branch
+        required: false
+        default: ${{ github.ref_name }}
+        type: string
+
+      build-number:
+        description: Build number
+        required: false
+        default: ${{ github.run_number }}
+        type: string
+
+      wire:
+        description: Upload wire generated code
+        required: false
+        default: false
+        type: boolean
+
+      package-pattern:
+        required: false
+        type: string
+
+      systemd-service:
+        required: false
+        type: string
+
+    outputs:
+      component:
+        value: ${{ jobs.parse.outputs.component }}
+        description: Extracted component
+
+      version:
+        value: ${{ jobs.parse.outputs.version }}
+        description: Extracted version
+
+      package-pattern:
+        value: ${{ jobs.set-vars.outputs.package-pattern }}
+        description: Glob for package
+
+      systemd-service:
+        value: ${{ jobs.set-vars.outputs.systemd-service }}
+        description: Systemd service name
+
+jobs:
+  set-vars:
+    name: Set variables
+    if: inputs.only-dependencies == false
+    runs-on: [ arc-runner-set ]
+    outputs:
+      package-pattern: ${{ steps.run.outputs.package-pattern }}
+      systemd-service: ${{ steps.run.outputs.systemd-service }}
+
+    steps:
+      - id: run
+        run: |
+          echo "package-pattern=${{ inputs.package-pattern }}" >> $GITHUB_OUTPUT
+          echo "systemd-service=${{ inputs.systemd-service }}" >> $GITHUB_OUTPUT
+
+  parse:
+    name: Version
+    if: inputs.only-dependencies == false
+    runs-on: [ arc-runner-set ]
+    outputs:
+      version: ${{ steps.parse-version.outputs.version }}
+      component: ${{ steps.parse-version.outputs.component }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse version
+        id: parse-version
+        env:
+          DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
+          TRIGGERED_BRANCH: ${{ inputs.triggered-branch }}
+          BUILD_NUMBER: ${{ inputs.build-number }}
+
+        run: |
+          #!/bin/bash
+          set -e
+
+          # Function to extract development version
+          extract_development() {
+            local build_number="$1"
+            local component="dev"
+            local year=$(date +"%y")  # Get last two digits of the year
+            local month=$(date +"%m") # Get month as number
+            local month_without_leading_zero=$(echo "$month" | sed 's/^0//')  # Remove leading zero
+            local version="v${year}.${month_without_leading_zero}-${component}.${build_number}"
+
+            echo "$version" "$component"
+          }
+
+          # Function to extract release version
+          extract_release() {
+            local branch="$1"
+            local build_number="$2"
+            local component="${branch}-releases"
+
+            # Remove 'v' prefix from branch name
+            local branch_version="${branch#v}"
+
+            # Split version by dot
+            local year=$(echo "$branch_version" | cut -d '.' -f 1)
+            local month=$(echo "$branch_version" | cut -d '.' -f 2)
+
+            # Remove leading zero from month part
+            local month_without_leading_zero=$(echo "$month" | sed 's/^0//')
+            local version="v${year}.${month_without_leading_zero}-${build_number}"
+
+            echo "$version" "$component"
+          }
+
+          # Main execution logic
+          read version component < <(extract_development "$BUILD_NUMBER")
+          if [[ "$TRIGGERED_BRANCH" != "$DEVELOPMENT_BRANCH" ]]; then
+            read version component < <(extract_release "$TRIGGERED_BRANCH" "$BUILD_NUMBER")
+          fi
+
+          echo "Extracted version: $version, component: $component"
+
+          # Set outputs for GitHub Actions
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "component=${component}" >> $GITHUB_OUTPUT
+
+  dependencies:
+    name: Dependencies
+    runs-on: [ arc-runner-set ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Generate code
+        run: go generate ./...
+
+      - name: Upload Go generated code
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-code-go
+          compression-level: 9
+          path: gen/go
+
+      - name: Upload wire generated code
+        if: ${{ inputs.wire == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-code-wire
+          compression-level: 9
+          path: cmd/wire_gen.go
