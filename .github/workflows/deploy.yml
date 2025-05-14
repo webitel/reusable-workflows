@@ -1,0 +1,100 @@
+name: Deploy
+
+on:
+  workflow_call:
+    secrets:
+      host:
+        required: true
+        description: Remote host (IP or domain) where the build artifacts will be deployed
+
+      user:
+        required: true
+        description: SSH username used to connect to the remote host
+
+      private-key:
+        required: true
+        description: Private SSH key used for authentication with the remote host
+
+    inputs:
+      source:
+        required: true
+        description: Build artifact (e.g., .deb package) to be copied and installed on the remote host
+        type: string
+
+      service:
+        required: true
+        description: Systemd service to restart after the package is installed"
+        type: string
+
+      environment:
+        description: Deployment environment (e.g., development, staging, production)
+        required: true
+        type: string
+
+jobs:
+  check-latest:
+    name: Check latest release
+    if: inputs.environment == 'staging'
+    runs-on: [ arc-runner-set ]
+    outputs:
+      latest: ${{ steps.check.outputs.latest }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history so we can list branches
+
+      - name: For each git ref
+        id: check
+        run: |
+          current_branch="${GITHUB_REF#refs/heads/}"
+          echo "Current branch: $current_branch"
+
+          latest_branch=$(git ls-remote --heads origin 'v*.*' \
+            | awk '{print $2}' \
+            | sed 's|refs/heads/||' \
+            | sort -rV \
+            | head -n1)
+
+          echo "Latest release branch: $latest_branch"
+          if [[ "$current_branch" == "$latest_branch" ]]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Deploy
+    if: inputs.environment != 'staging' || (inputs.environment == 'staging' && needs.check-latest.outputs.latest == 'true')
+    runs-on: [ arc-runner-set ]
+    environment:
+      name: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-packages
+
+      - name: Copy build
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.host }}
+          username: ${{ secrets.user }}
+          key: ${{ secrets.private-key }}
+          source: ${{ inputs.source }}
+          target: ~/dist
+
+      - name: Install package
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.host }}
+          username: ${{ secrets.user }}
+          key: ${{ secrets.private-key }}
+          script: |
+            sudo dpkg -i ~/dist/${{ inputs.source }}
+            rm ~/dist/${{ inputs.source }}
+            sudo systemctl restart ${{ inputs.service }}
