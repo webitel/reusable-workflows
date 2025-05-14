@@ -1,0 +1,23 @@
+name: Download Generated Code
+description: Conditionally download generated artifacts
+inputs:
+  wire:
+    description: Download wire generated code
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Download generated code (Go)
+      uses: actions/download-artifact@v4
+      with:
+        name: generated-code-go
+        path: gen/go
+
+    - name: Download generated code (wire)
+      if: ${{ inputs.wire == 'true' }}
+      uses: actions/download-artifact@v4
+      with:
+        name: generated-code-wire
+        path: cmd/
