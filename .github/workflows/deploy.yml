@@ -63,7 +63,11 @@ jobs:
 
   deploy:
     name: Deploy
-    if: inputs.environment != 'staging' || (inputs.environment == 'staging' && needs.check-latest.outputs.latest == 'true')
+    if: |
+      (always() && !failure() && !cancelled() && inputs.environment != 'staging') || 
+        (inputs.environment == 'staging' && needs.check-latest.outputs.latest == 'true')
+
+    needs: [ check-latest ]
     runs-on: [ arc-runner-set ]
     environment:
       name: ${{ inputs.environment }}
