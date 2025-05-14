@@ -1,0 +1,12 @@
+{
+  "name": "Webitel Go pull request checks workflow",
+  "description": "Prepare the environment with dependencies and run code checks (like tests, linting, etc).",
+  "iconName": "octicon checklist",
+  "categories": [
+    "Go"
+  ],
+  "filePatterns": [
+    "go.mod",
+    ".*\\.go$"
+  ]
+}
