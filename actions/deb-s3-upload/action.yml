@@ -1,0 +1,77 @@
+name: Upload Debian Package to S3-backed APT Repository
+description: >
+  Uploads a Debian package to an S3-backed APT repository using deb-s3.
+  Supports GPG signing and custom codename/component settings.
+
+inputs:
+  aws-secret-id:
+    required: true
+    description: AWS access key ID used for authentication to S3
+
+  aws-secret-key:
+    required: true
+    description: AWS secret access key used for authentication to S3
+
+  aws-bucket-region:
+    required: true
+    description: AWS region where the S3 bucket is located (e.g., us-east-1)
+
+  aws-bucket-name:
+    required: true
+    description: Name of the S3 bucket where the package will be uploaded
+
+  source:
+    required: true
+    description: Build artifact (e.g., .deb package) that will be uploaded to the S3 bucket
+
+  codename:
+    description: Codename of the APT repository
+    required: true
+
+  component:
+    description: Component of the APT repository
+    required: true
+
+  gpg-private-key:
+    required: true
+    description: Base64-encoded GPG private key used for signing
+
+  gpg-passphrase:
+    required: true
+    description: Passphrase for the GPG private key
+
+runs:
+  using: composite
+  steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-packages
+
+    - name: Import GPG key
+      id: import-gpg-key
+      uses: crazy-max/ghaction-import-gpg@v6.3.0
+      with:
+        gpg_private_key: ${{ inputs.gpg-private-key }}
+        passphrase: ${{ inputs.gpg-passphrase }}
+        trust_level: 5
+
+    - name: Publish packages
+      shell: bash
+      env:
+        AWS_ACCESS_KEY_ID: ${{ inputs.aws-secret-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-key }}
+        AWS_DEFAULT_REGION: ${{ inputs.aws-bucket-region }}
+        AWS_BUCKET_NAME: ${{ inputs.aws-bucket-name }}
+        SOURCE_NAME: ${{ inputs.source }}
+        COMPONENT: ${{ inputs.component }}
+        CODENAME: ${{ inputs.codename }}
+      run: |
+        export GPG_TTY=$(tty)
+        deb-s3 upload ${SOURCE_NAME} --visibility nil --arch amd64 \
+          --sign ${{ steps.import-gpg-key.outputs.fingerprint }} \
+          --gpg-options "--pinentry-mode loopback" \
+          --bucket "${AWS_BUCKET_NAME}" \
+          --s3-region "${AWS_DEFAULT_REGION}" \
+          --component ${COMPONENT} \
+          --codename ${CODENAME} 
