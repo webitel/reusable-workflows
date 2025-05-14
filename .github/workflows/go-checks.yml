@@ -23,10 +23,32 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Checkout repository
+        env:
+          action_repo: ${{ github.action_repository }}
+          action_ref: ${{ github.action_ref }}
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          repository: ${{ env.action_repo }}
+          ref: ${{ env.action_ref }}
+          path: _shared-workflows-download-generated
+          persist-credentials: false
+
       - name: Download generated code
-        uses: ./actions/download-generated
+        uses: ./_shared-workflows-download-generated/actions/download-generated
         with:
           wire: ${{ inputs.wire }}
+
+      - name: Cleanup checkout directory
+        if: ${{ !cancelled() }}
+        run: |
+          # Check that the directory looks OK before removing it
+          if ! [ -d "_shared-workflows-download-generated/.git" ]; then
+            echo "::warning Not removing shared workflows directory: doesn't look like a git repository"
+          exit 0
+          fi
+          
+          rm -rf _shared-workflows-download-generated
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6.5.2
@@ -45,10 +67,32 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Checkout repository
+        env:
+          action_repo: ${{ github.action_repository }}
+          action_ref: ${{ github.action_ref }}
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          repository: ${{ env.action_repo }}
+          ref: ${{ env.action_ref }}
+          path: _shared-workflows-download-generated
+          persist-credentials: false
+
       - name: Download generated code
-        uses: ./actions/download-generated
+        uses: ./_shared-workflows-download-generated/actions/download-generated
         with:
           wire: ${{ inputs.wire }}
+
+      - name: Cleanup checkout directory
+        if: ${{ !cancelled() }}
+        run: |
+          # Check that the directory looks OK before removing it
+          if ! [ -d "_shared-workflows-download-generated/.git" ]; then
+            echo "::warning Not removing shared workflows directory: doesn't look like a git repository"
+          exit 0
+          fi
+          
+          rm -rf _shared-workflows-download-generated
 
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -71,10 +115,32 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Checkout repository
+        env:
+          action_repo: ${{ github.action_repository }}
+          action_ref: ${{ github.action_ref }}
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          repository: ${{ env.action_repo }}
+          ref: ${{ env.action_ref }}
+          path: _shared-workflows-download-generated
+          persist-credentials: false
+
       - name: Download generated code
-        uses: ./actions/download-generated
+        uses: ./_shared-workflows-download-generated/actions/download-generated
         with:
           wire: ${{ inputs.wire }}
+
+      - name: Cleanup checkout directory
+        if: ${{ !cancelled() }}
+        run: |
+          # Check that the directory looks OK before removing it
+          if ! [ -d "_shared-workflows-download-generated/.git" ]; then
+            echo "::warning Not removing shared workflows directory: doesn't look like a git repository"
+          exit 0
+          fi
+          
+          rm -rf _shared-workflows-download-generated
 
       - name: Run all tests
         run: go test -short -v ./... | go run github.com/jstemmer/go-junit-report@latest -set-exit-code > report.xml
