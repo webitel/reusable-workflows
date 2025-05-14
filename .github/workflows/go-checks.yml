@@ -1,0 +1,86 @@
+name: Checks
+
+on:
+  pull_request:
+    branches: [ main ]
+
+  workflow_call:
+    inputs:
+      wire:
+        description: Download wire generated code
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  lint:
+    name: Lint code
+    runs-on: [ arc-runner-set ]
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Download generated code
+        uses: ./actions/download-generated
+        with:
+          wire: ${{ inputs.wire }}
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6.5.2
+        with:
+          install-mode: none
+          problem-matchers: true
+          skip-cache: true
+
+  govulncheck:
+    name: Vulnerabilities
+    runs-on: [ arc-runner-set ]
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Download generated code
+        uses: ./actions/download-generated
+        with:
+          wire: ${{ inputs.wire }}
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck and save to file
+        run: govulncheck -C . -format sarif ./... > report.sarif
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@28deaeda66b76a05916b6923827895f2b14ab387 # v3.28.16
+        with:
+          sarif_file: report.sarif
+
+  test:
+    name: Unit testing
+    runs-on: [ arc-runner-set ]
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Download generated code
+        uses: ./actions/download-generated
+        with:
+          wire: ${{ inputs.wire }}
+
+      - name: Run all tests
+        run: go test -short -v ./... | go run github.com/jstemmer/go-junit-report@latest -set-exit-code > report.xml
+
+      - name: Test Summary
+        if: always()
+        uses: test-summary/action@v2.4
+        with:
+          paths: report.xml
