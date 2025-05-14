@@ -24,13 +24,10 @@ jobs:
           fetch-depth: 2
 
       - name: Checkout repository
-        env:
-          action_repo: ${{ github.action_repository }}
-          action_ref: ${{ github.action_ref }}
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
-          repository: ${{ env.action_repo }}
-          ref: ${{ env.action_ref }}
+          repository: webitel/reusable-workflows
+          ref: main
           path: _shared-workflows-download-generated
           persist-credentials: false
 
@@ -68,13 +65,10 @@ jobs:
           fetch-depth: 2
 
       - name: Checkout repository
-        env:
-          action_repo: ${{ github.action_repository }}
-          action_ref: ${{ github.action_ref }}
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
-          repository: ${{ env.action_repo }}
-          ref: ${{ env.action_ref }}
+          repository: webitel/reusable-workflows
+          ref: main
           path: _shared-workflows-download-generated
           persist-credentials: false
 
@@ -116,13 +110,10 @@ jobs:
           fetch-depth: 2
 
       - name: Checkout repository
-        env:
-          action_repo: ${{ github.action_repository }}
-          action_ref: ${{ github.action_ref }}
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
-          repository: ${{ env.action_repo }}
-          ref: ${{ env.action_ref }}
+          repository: webitel/reusable-workflows
+          ref: main
           path: _shared-workflows-download-generated
           persist-credentials: false
 
