@@ -1,0 +1,48 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Extracted version to use for the build
+        required: true
+        type: string
+
+      source:
+        description: Build artifact (e.g., .deb package)
+        required: true
+        type: string
+
+      wire:
+        description: Download wire generated code
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  compile:
+    name: Compile application
+    runs-on: [ arc-runner-set ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # required for the changelog to work correctly
+
+      - name: Download generated code
+        uses: ./actions/download-generated
+        with:
+          wire: ${{ inputs.wire }}
+
+      - name: Build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ inputs.version }}
+        run: goreleaser release --clean --skip publish --skip validate
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-packages
+          compression-level: 9
+          path: dist/${{ inputs.source }}
