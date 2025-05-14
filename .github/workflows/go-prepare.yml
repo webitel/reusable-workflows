@@ -39,6 +39,11 @@ on:
         required: false
         type: string
 
+      check-latest:
+        required: false
+        default: false
+        type: boolean
+
     outputs:
       component:
         value: ${{ jobs.parse.outputs.component }}
@@ -55,6 +60,9 @@ on:
       systemd-service:
         value: ${{ jobs.set-vars.outputs.systemd-service }}
         description: Systemd service name
+
+      latest:
+        value: ${{ jobs.check-latest.outputs.latest }}
 
 jobs:
   set-vars:
@@ -139,6 +147,35 @@ jobs:
           # Set outputs for GitHub Actions
           echo "version=${version}" >> $GITHUB_OUTPUT
           echo "component=${component}" >> $GITHUB_OUTPUT
+
+  check-latest:
+    name: Check latest release
+    if: inputs.only-dependencies == false && inputs.check-latest == true
+    runs-on: [ arc-runner-set ]
+    outputs:
+      latest: ${{ steps.check.outputs.latest }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history so we can list branches
+
+      - name: For each git ref
+        id: check
+        run: |
+          current_branch="${GITHUB_REF#refs/heads/}"
+          echo "Current branch: $current_branch"
+
+          latest_branch=$(git ls-remote --heads origin 'v*.*' \
+            | awk '{print $2}' \
+            | sed 's|refs/heads/||' \
+            | sort -rV \
+            | head -n1)
+
+          echo "Latest release branch: $latest_branch"
+          if [[ "$current_branch" == "$latest_branch" ]]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          fi
 
   dependencies:
     name: Dependencies
