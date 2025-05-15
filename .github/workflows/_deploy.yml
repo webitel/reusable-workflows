@@ -53,6 +53,7 @@ jobs:
     if: inputs.repository-environment != 'acceptance'
     outputs:
       latest: ${{ steps.check.outputs.latest }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

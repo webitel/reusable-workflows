@@ -50,7 +50,7 @@ on:
 jobs:
   version:
     name: Version
-    if: inputs.only-dependencies != false
+    if: inputs.only-dependencies != true
     uses: webitel/reusable-workflows/.github/workflows/_version.yml@main
     with:
       development-branch: ${{ inputs.development-branch }}
