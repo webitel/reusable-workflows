@@ -2,69 +2,116 @@ name: Deploy
 
 on:
   workflow_call:
-    secrets:
-      host:
-        required: true
-        description: Remote host (IP or domain) where the build artifacts will be deployed
-
-      user:
-        required: true
-        description: SSH username used to connect to the remote host
-
-      private-key:
-        required: true
-        description: Private SSH key used for authentication with the remote host
-
     inputs:
-      source:
-        required: true
-        description: Build artifact (e.g., .deb package) to be copied and installed on the remote host
+      component:
+        description: Component of the APT repository
+        required: false
         type: string
+        default: dev
 
-      service:
-        required: true
-        description: Systemd service to restart after the package is installed"
+      repository-environment:
+        description: Linked environment for upload build to repository (eg. acceptance, v25.04-releases, ...)
+        required: false
         type: string
-
-      environment:
-        description: Deployment environment (e.g., development, staging, production)
-        required: true
-        type: string
+        default: acceptance
 
 jobs:
-  deploy:
-    name: Deploy
+  development:
+    name: Development
     runs-on: [ arc-runner-set ]
-    environment:
-      name: ${{ inputs.environment }}
+    if: inputs.repository-environment == 'acceptance'
+    environment: development
+    steps:
+      - name: Deploy
+        uses: webitel/reusable-workflows/actions/deploy-action@main
+        with:
+          service: ${{ vars.SYSTEMD_SERVICE }}
+          source: ${{ vars.PACKAGE_PATTERN }}
+          host: ${{ secrets.DEPLOYMENTS_SSH_HOST_DEVELOPMENT }}
+          user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
+          private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
 
+  testing:
+    name: Testing
+    runs-on: [ arc-runner-set ]
+    needs: [ development ]
+    if: inputs.repository-environment == 'acceptance'
+    environment: testing
+    steps:
+      - name: Deploy
+        uses: webitel/reusable-workflows/actions/deploy-action@main
+        with:
+          service: ${{ vars.SYSTEMD_SERVICE }}
+          source: ${{ vars.PACKAGE_PATTERN }}
+          host: ${{ secrets.DEPLOYMENTS_SSH_HOST_TESTING }}
+          user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
+          private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
+
+  check-latest:
+    name: Check latest release
+    runs-on: [ arc-runner-set ]
+    if: inputs.repository-environment != 'acceptance'
+    outputs:
+      latest: ${{ steps.check.outputs.latest }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0 # Fetch all history so we can list branches
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-packages
+      - name: For each git ref
+        id: check
+        run: |
+          current_branch="${GITHUB_REF#refs/heads/}"
+          echo "Current branch: $current_branch"
 
-      - name: Copy build
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ secrets.host }}
-          username: ${{ secrets.user }}
-          key: ${{ secrets.private-key }}
-          source: ${{ inputs.source }}
-          target: ~/dist
+          latest_branch=$(git ls-remote --heads origin 'v*.*' \
+            | awk '{print $2}' \
+            | sed 's|refs/heads/||' \
+            | sort -rV \
+            | head -n1)
 
-      - name: Install package
-        uses: appleboy/ssh-action@v1.2.2
+          echo "Latest release branch: $latest_branch"
+          if [[ "$current_branch" == "$latest_branch" ]]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  staging:
+    name: Staging
+    needs: [ check-latest ]
+    if: inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.latest == 'true'
+    runs-on: [ arc-runner-set ]
+    environment: testing
+    steps:
+      - name: Deploy
+        uses: webitel/reusable-workflows/actions/deploy-action@main
         with:
-          host: ${{ secrets.host }}
-          username: ${{ secrets.user }}
-          key: ${{ secrets.private-key }}
-          script: |
-            sudo dpkg -i ~/dist/${{ inputs.source }}
-            rm ~/dist/${{ inputs.source }}
-            sudo systemctl restart ${{ inputs.service }}
+          service: ${{ vars.SYSTEMD_SERVICE }}
+          source: ${{ vars.PACKAGE_PATTERN }}
+          host: ${{ secrets.DEPLOYMENTS_SSH_HOST_STAGING }}
+          user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
+          private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
+
+  repository:
+    name: Publish .deb package
+    runs-on: [ arc-runner-set ]
+    needs: [ testing, staging ]
+    if: |
+      always() &&
+      !cancelled() &&
+      (needs.testing.result == 'success' || needs.staging.result == 'success')
+
+    environment: ${{ inputs.repository-environment }}
+    steps:
+      - name: Publish build
+        uses: webitel/reusable-workflows/actions/deb-s3-upload@main
+        with:
+          source: ${{ vars.PACKAGE_PATTERN }}
+          aws-bucket-name: ${{ vars.DEB_AWS_BUCKET_NAME }}
+          aws-bucket-region: ${{ vars.DEB_AWS_DEFAULT_REGION }}
+          aws-secret-id: ${{ secrets.DEB_AWS_ACCESS_KEY_ID }}
+          aws-secret-key: ${{ secrets.DEB_AWS_SECRET_ACCESS_KEY }}
+          component: ${{ inputs.component }}
+          codename: ${{ vars.DEB_CODENAME }}
+          gpg-private-key: ${{ secrets.REPO_SIGNING_KEY }}
+          gpg-passphrase: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}

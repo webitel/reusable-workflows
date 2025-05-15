@@ -1,0 +1,65 @@
+name: Deploy to Remote Host
+description: Copies and installs build artifact on a remote host, then restarts the specified service.
+
+inputs:
+  source:
+    required: true
+    description: Build artifact (e.g., .deb package)
+
+  service:
+    description: Systemd service to restart
+    required: false
+
+  host:
+    description: Remote host (IP or domain)
+    required: true
+
+  user:
+    description: SSH username
+    required: true
+
+  private-key:
+    description: Private SSH key for authentication
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-packages
+
+    - name: Copy build to remote host
+      uses: appleboy/scp-action@v1.0.0
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.user }}
+        key: ${{ inputs.private-key }}
+        source: ${{ inputs.source }}
+        target: ~/dist
+
+    - name: Install package
+      uses: appleboy/ssh-action@v1.2.2
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.user }}
+        key: ${{ inputs.private-key }}
+        script: |
+          sudo dpkg -i ~/dist/${{ inputs.source }}
+          rm ~/dist/${{ inputs.source }}
+
+    - name: Restart service
+      uses: appleboy/ssh-action@v1.2.2
+      if: inputs.service != ''
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.user }}
+        key: ${{ inputs.private-key }}
+        script: |
+          sudo systemctl restart ${{ inputs.service }}
