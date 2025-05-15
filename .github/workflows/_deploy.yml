@@ -96,11 +96,18 @@ jobs:
   repository:
     name: Publish .deb package
     runs-on: [ arc-runner-set ]
-    needs: [ testing, staging ]
+    needs: [ testing, check-latest, staging ]
+
+    # Run even if previous jobs fail or are cancelled, but
+    # do not run if the workflow was cancelled.
+    # Case 1: Development deployment (acceptance environment)
+    # Case 2: Latest release deployment (non-acceptance environment)
+    # Case 3: Other release deployment (non-acceptance environment and not latest release)
     if: |
-      always() &&
-      !cancelled() &&
-      (needs.testing.result == 'success' || needs.staging.result == 'success')
+      always() && !cancelled() &&
+      ((inputs.repository-environment == 'acceptance' && needs.testing.result == 'success') ||
+        (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.latest == 'true' && needs.staging.result == 'success') ||
+        (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.latest != 'true'))
 
     environment: ${{ inputs.repository-environment }}
     steps:
