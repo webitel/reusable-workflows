@@ -3,179 +3,59 @@ name: Prepare
 on:
   workflow_call:
     inputs:
-      only-dependencies:
-        default: false
-        type: boolean
-
       development-branch:
-        description: Name of the development branch
+        type: string
         required: false
         default: main
-        type: string
+        description: Name of the development branch
 
       triggered-branch:
-        description: Name of the triggered branch
+        type: string
         required: false
         default: ${{ github.ref_name }}
-        type: string
+        description: Name of the triggered branch
 
       build-number:
-        description: Build number
+        type: string
         required: false
         default: ${{ github.run_number }}
+        description: Build number
+
+      only-dependencies:
+        type: boolean
+        required: false
+        default: false
+
+      generate-code:
         type: string
+        required: false
+        default: false
+        description: Should generate code in workflow
 
       wire:
+        type: boolean
+        required: false
+        default: false
         description: Upload wire generated code
-        required: false
-        default: false
-        type: boolean
-
-      package-pattern:
-        required: false
-        type: string
-
-      systemd-service:
-        required: false
-        type: string
-
-      check-latest:
-        required: false
-        default: false
-        type: boolean
 
     outputs:
       component:
-        value: ${{ jobs.parse.outputs.component }}
+        value: ${{ jobs.version.outputs.component }}
         description: Extracted component
 
       version:
-        value: ${{ jobs.parse.outputs.version }}
+        value: ${{ jobs.version.outputs.version }}
         description: Extracted version
 
-      package-pattern:
-        value: ${{ jobs.set-vars.outputs.package-pattern }}
-        description: Glob for package
-
-      systemd-service:
-        value: ${{ jobs.set-vars.outputs.systemd-service }}
-        description: Systemd service name
-
-      latest:
-        value: ${{ jobs.check-latest.outputs.latest }}
-
 jobs:
-  set-vars:
-    name: Set variables
-    if: inputs.only-dependencies == false
-    runs-on: [ arc-runner-set ]
-    outputs:
-      package-pattern: ${{ steps.run.outputs.package-pattern }}
-      systemd-service: ${{ steps.run.outputs.systemd-service }}
-
-    steps:
-      - id: run
-        run: |
-          echo "package-pattern=${{ inputs.package-pattern }}" >> $GITHUB_OUTPUT
-          echo "systemd-service=${{ inputs.systemd-service }}" >> $GITHUB_OUTPUT
-
-  parse:
+  version:
     name: Version
-    if: inputs.only-dependencies == false
-    runs-on: [ arc-runner-set ]
-    outputs:
-      version: ${{ steps.parse-version.outputs.version }}
-      component: ${{ steps.parse-version.outputs.component }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Parse version
-        id: parse-version
-        env:
-          DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
-          TRIGGERED_BRANCH: ${{ inputs.triggered-branch }}
-          BUILD_NUMBER: ${{ inputs.build-number }}
-
-        run: |
-          #!/bin/bash
-          set -e
-
-          # Function to extract development version
-          extract_development() {
-            local build_number="$1"
-            local component="dev"
-            local year=$(date +"%y")  # Get last two digits of the year
-            local month=$(date +"%m") # Get month as number
-            local month_without_leading_zero=$(echo "$month" | sed 's/^0//')  # Remove leading zero
-            local version="v${year}.${month_without_leading_zero}-${component}.${build_number}"
-
-            echo "$version" "$component"
-          }
-
-          # Function to extract release version
-          extract_release() {
-            local branch="$1"
-            local build_number="$2"
-            local component="${branch}-releases"
-
-            # Remove 'v' prefix from branch name
-            local branch_version="${branch#v}"
-
-            # Split version by dot
-            local year=$(echo "$branch_version" | cut -d '.' -f 1)
-            local month=$(echo "$branch_version" | cut -d '.' -f 2)
-
-            # Remove leading zero from month part
-            local month_without_leading_zero=$(echo "$month" | sed 's/^0//')
-            local version="v${year}.${month_without_leading_zero}-${build_number}"
-
-            echo "$version" "$component"
-          }
-
-          # Main execution logic
-          read version component < <(extract_development "$BUILD_NUMBER")
-          if [[ "$TRIGGERED_BRANCH" != "$DEVELOPMENT_BRANCH" ]]; then
-            read version component < <(extract_release "$TRIGGERED_BRANCH" "$BUILD_NUMBER")
-          fi
-
-          echo "Extracted version: $version, component: $component"
-
-          # Set outputs for GitHub Actions
-          echo "version=${version}" >> $GITHUB_OUTPUT
-          echo "component=${component}" >> $GITHUB_OUTPUT
-
-  check-latest:
-    name: Check latest release
-    if: inputs.only-dependencies == false && inputs.check-latest == true
-    runs-on: [ arc-runner-set ]
-    outputs:
-      latest: ${{ steps.check.outputs.latest }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Fetch all history so we can list branches
-
-      - name: For each git ref
-        id: check
-        run: |
-          current_branch="${GITHUB_REF#refs/heads/}"
-          echo "Current branch: $current_branch"
-
-          latest_branch=$(git ls-remote --heads origin 'v*.*' \
-            | awk '{print $2}' \
-            | sed 's|refs/heads/||' \
-            | sort -rV \
-            | head -n1)
-
-          echo "Latest release branch: $latest_branch"
-          if [[ "$current_branch" == "$latest_branch" ]]; then
-            echo "latest=true" >> "$GITHUB_OUTPUT"
-          fi
+    if: inputs.only-dependencies != false
+    uses: webitel/reusable-workflows/.github/workflows/_version.yml@main
+    with:
+      development-branch: ${{ inputs.development-branch }}
+      triggered-branch: ${{ inputs.triggered-branch }}
+      build-number: ${{ inputs.build-number }}
 
   dependencies:
     name: Dependencies
@@ -189,6 +69,11 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+  generated:
+    name: Code
+    runs-on: [ arc-runner-set ]
+    if: inputs.generate-code == true
+    steps:
       - name: Generate code
         run: go generate ./...
 
@@ -200,7 +85,7 @@ jobs:
           path: gen/go
 
       - name: Upload wire generated code
-        if: ${{ inputs.wire == true }}
+        if: inputs.wire == true
         uses: actions/upload-artifact@v4
         with:
           name: generated-code-wire
