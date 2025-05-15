@@ -31,9 +31,9 @@ jobs:
     needs: [ prepare, compile ]
     uses: webitel/reusable-workflows/.github/workflows/deploy.yml@main
     secrets:
-      host: ${{ secrets.DEVELOPMENT_HOST }}
-      user: ${{ secrets.SSH_USER }}
-      private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      host: ${{ secrets.DEPLOYMENTS_SSH_HOST_DEVELOPMENT }}
+      user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
+      private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
 
     with:
       environment: development
@@ -45,9 +45,9 @@ jobs:
     needs: [ prepare, compile, development ]
     uses: webitel/reusable-workflows/.github/workflows/deploy.yml@main
     secrets:
-      host: ${{ secrets.TESTING_HOST }}
-      user: ${{ secrets.SSH_USER }}
-      private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      host: ${{ secrets.DEPLOYMENTS_SSH_HOST_TESTING }}
+      user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
+      private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
 
     with:
       environment: testing
@@ -71,8 +71,8 @@ jobs:
           source: ${{ needs.prepare.outputs.package-pattern }}
           aws-bucket-name: ${{ vars.DEB_AWS_BUCKET_NAME }}
           aws-bucket-region: ${{ vars.DEB_AWS_DEFAULT_REGION }}
-          aws-secret-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-secret-id: ${{ secrets.DEB_AWS_ACCESS_KEY_ID }}
+          aws-secret-key: ${{ secrets.DEB_AWS_SECRET_ACCESS_KEY }}
           component: ${{ needs.build.outputs.component }}
           codename: ${{ vars.DEB_CODENAME }}
           gpg-private-key: ${{ secrets.REPO_SIGNING_KEY }}
