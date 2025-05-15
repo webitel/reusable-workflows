@@ -45,6 +45,13 @@ jobs:
   govulncheck:
     name: Vulnerabilities
     runs-on: [ arc-runner-set ]
+    permissions:
+      security-events: write
+
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+
     continue-on-error: true
     steps:
       - name: Checkout repository
