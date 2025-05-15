@@ -64,7 +64,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Download dependencies
         run: go mod download
@@ -74,6 +74,11 @@ jobs:
     runs-on: [ arc-runner-set ]
     if: inputs.generate-code == 'true'
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
       - name: Generate code
         run: go generate ./...
 
