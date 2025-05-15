@@ -14,16 +14,16 @@ on:
         type: string
 
       generated-code:
-        type: boolean
+        type: string
         required: false
         default: false
         description: Download generated code
 
       wire:
-        description: Download wire generated code
+        type: string
         required: false
         default: false
-        type: boolean
+        description: Download wire generated code
 
 jobs:
   compile:
@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 0 # required for the changelog to work correctly
 
       - name: Download generated code
-        if: inputs.generated-code == true
+        if: inputs.generated-code == 'true'
         uses: webitel/reusable-workflows/actions/download-generated-action@main
         with:
           wire: ${{ inputs.wire }}

@@ -7,16 +7,16 @@ on:
   workflow_call:
     inputs:
       generated-code:
-        type: boolean
+        type: string
         required: false
         default: false
         description: Download generated code
 
       wire:
-        description: Download wire generated code
+        type: string
         required: false
         default: false
-        type: boolean
+        description: Download wire generated code
 
 jobs:
   lint:
@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 2
 
       - name: Download generated code
-        if: inputs.generated-code == true
+        if: inputs.generated-code == 'true'
         uses: webitel/reusable-workflows/actions/download-generated-action@main
         with:
           wire: ${{ inputs.wire }}
@@ -53,7 +53,7 @@ jobs:
           fetch-depth: 2
 
       - name: Download generated code
-        if: inputs.generated-code == true
+        if: inputs.generated-code == 'true'
         uses: webitel/reusable-workflows/actions/download-generated-action@main
         with:
           wire: ${{ inputs.wire }}
@@ -80,7 +80,7 @@ jobs:
           fetch-depth: 2
 
       - name: Download generated code
-        if: inputs.generated-code == true
+        if: inputs.generated-code == 'true'
         uses: webitel/reusable-workflows/actions/download-generated-action@main
         with:
           wire: ${{ inputs.wire }}

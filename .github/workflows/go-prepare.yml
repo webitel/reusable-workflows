@@ -22,18 +22,18 @@ on:
         description: Build number
 
       only-dependencies:
-        type: boolean
+        type: string
         required: false
         default: false
 
       generate-code:
-        type: boolean
+        type: string
         required: false
         default: false
         description: Should generate code in workflow
 
       wire:
-        type: boolean
+        type: string
         required: false
         default: false
         description: Upload wire generated code
@@ -50,7 +50,7 @@ on:
 jobs:
   version:
     name: Version
-    if: inputs.only-dependencies != true
+    if: inputs.only-dependencies != 'true'
     uses: webitel/reusable-workflows/.github/workflows/_version.yml@main
     with:
       development-branch: ${{ inputs.development-branch }}
@@ -72,7 +72,7 @@ jobs:
   generated:
     name: Code
     runs-on: [ arc-runner-set ]
-    if: inputs.generate-code == true
+    if: inputs.generate-code == 'true'
     steps:
       - name: Generate code
         run: go generate ./...
@@ -85,7 +85,7 @@ jobs:
           path: gen/go
 
       - name: Upload wire generated code
-        if: inputs.wire == true
+        if: inputs.wire == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: generated-code-wire
