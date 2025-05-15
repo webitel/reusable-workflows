@@ -82,7 +82,7 @@ jobs:
     needs: [ check-latest ]
     if: inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.latest == 'true'
     runs-on: [ arc-runner-set ]
-    environment: testing
+    environment: staging
     steps:
       - name: Deploy
         uses: webitel/reusable-workflows/actions/deploy-action@main
