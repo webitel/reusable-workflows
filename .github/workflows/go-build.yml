@@ -13,6 +13,12 @@ on:
         required: true
         type: string
 
+      generated-code:
+        type: boolean
+        required: false
+        default: false
+        description: Download generated code
+
       wire:
         description: Download wire generated code
         required: false
@@ -29,29 +35,11 @@ jobs:
         with:
           fetch-depth: 0 # required for the changelog to work correctly
 
-      - name: Checkout repository
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-        with:
-          repository: webitel/reusable-workflows
-          ref: main
-          path: _shared-workflows-download-generated
-          persist-credentials: false
-
       - name: Download generated code
-        uses: ./_shared-workflows-download-generated/actions/download-generated
+        if: inputs.generated-code == true
+        uses: webitel/reusable-workflows/actions/download-generated-action@main
         with:
           wire: ${{ inputs.wire }}
-
-      - name: Cleanup checkout directory
-        if: ${{ !cancelled() }}
-        run: |
-          # Check that the directory looks OK before removing it
-          if ! [ -d "_shared-workflows-download-generated/.git" ]; then
-            echo "::warning Not removing shared workflows directory: doesn't look like a git repository"
-          exit 0
-          fi
-          
-          rm -rf _shared-workflows-download-generated
 
       - name: Build
         env:

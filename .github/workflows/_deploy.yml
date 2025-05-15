@@ -4,16 +4,16 @@ on:
   workflow_call:
     inputs:
       component:
-        description: Component of the APT repository
-        required: false
         type: string
+        required: false
         default: dev
+        description: Component of the APT repository
 
       repository-environment:
-        description: Linked environment for upload build to repository (eg. acceptance, v25.04-releases, ...)
-        required: false
         type: string
+        required: false
         default: acceptance
+        description: Linked environment for upload build to repository (eg. acceptance, v25.04-releases, ...)
 
 jobs:
   development:
@@ -104,7 +104,7 @@ jobs:
     environment: ${{ inputs.repository-environment }}
     steps:
       - name: Publish build
-        uses: webitel/reusable-workflows/actions/deb-s3-upload@main
+        uses: webitel/reusable-workflows/actions/deb-s3-upload-action@main
         with:
           source: ${{ vars.PACKAGE_PATTERN }}
           aws-bucket-name: ${{ vars.DEB_AWS_BUCKET_NAME }}

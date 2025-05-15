@@ -27,7 +27,7 @@ on:
         default: false
 
       generate-code:
-        type: string
+        type: boolean
         required: false
         default: false
         description: Should generate code in workflow
