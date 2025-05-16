@@ -51,7 +51,7 @@ runs:
         username: ${{ inputs.user }}
         key: ${{ inputs.private-key }}
         script: |
-          sudo dpkg -i ~/dist/${{ inputs.source }}
+          sudo DEBIAN_FRONTEND=noninteractive dpkg --install --force-confold ~/dist/${{ inputs.source }}
           rm ~/dist/${{ inputs.source }}
 
     - name: Restart service
