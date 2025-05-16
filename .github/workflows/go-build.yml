@@ -19,12 +19,6 @@ on:
         default: false
         description: Download generated code
 
-      wire:
-        type: string
-        required: false
-        default: false
-        description: Download wire generated code
-
 jobs:
   compile:
     name: Compile application
@@ -37,9 +31,9 @@ jobs:
 
       - name: Download generated code
         if: inputs.generated-code == 'true'
-        uses: webitel/reusable-workflows/actions/download-generated-action@main
+        uses: actions/download-artifact@v4
         with:
-          wire: ${{ inputs.wire }}
+          name: generated-code
 
       - name: Build
         env:

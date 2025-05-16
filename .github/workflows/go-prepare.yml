@@ -26,17 +26,10 @@ on:
         required: false
         default: false
 
-      generate-code:
+      generated-code-path:
         type: string
         required: false
-        default: false
-        description: Should generate code in workflow
-
-      wire:
-        type: string
-        required: false
-        default: false
-        description: Upload wire generated code
+        default: ''
 
     outputs:
       component:
@@ -72,7 +65,7 @@ jobs:
   generated:
     name: Code
     runs-on: [ arc-runner-set ]
-    if: inputs.generate-code == 'true'
+    if: inputs.generated-code-path != ''
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -82,17 +75,11 @@ jobs:
       - name: Generate code
         run: go generate ./...
 
-      - name: Upload Go generated code
+      - name: Upload generated code
         uses: actions/upload-artifact@v4
         with:
-          name: generated-code-go
+          name: generated-code
           compression-level: 9
-          path: gen/go
-
-      - name: Upload wire generated code
-        if: inputs.wire == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-code-wire
-          compression-level: 9
-          path: cmd/wire_gen.go
+          path: |
+            dummy-file-to-keep-directory-structure.txt
+            ${{ inputs.generated-code-path }}
