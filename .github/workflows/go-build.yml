@@ -39,6 +39,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_CURRENT_TAG: ${{ inputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
         run: goreleaser release --clean --skip publish --skip validate
 
       - name: Upload artifacts
