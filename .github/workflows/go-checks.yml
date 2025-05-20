@@ -94,3 +94,35 @@ jobs:
         uses: test-summary/action@v2.4
         with:
           paths: report.xml
+
+  analyze:
+    name: CodeQL analyze
+    runs-on: [ arc-runner-set ]
+    permissions:
+      security-events: write
+
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Download generated code
+        if: inputs.generated-code == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: generated-code
+
+      # Initializes the CodeQL tools for scanning.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go
+          # If you wish to specify custom queries, you can do so here or in a config file.
+          # By default, queries listed here will override any specified in a config file.
+          # Prefix the list here with "+" to use these queries and those in the config file.
+          # queries: ./path/to/local/query, your-org/your-repo/queries@main
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
