@@ -1,0 +1,10 @@
+{
+  "extends": "@tsconfig/node23",
+  "include": ["src"],
+  "exclude": ["**/*.test.ts"],
+  "compilerOptions": {
+    "module": "node16",
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  }
+}
