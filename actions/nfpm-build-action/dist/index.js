@@ -34006,6 +34006,11 @@ class PackageBuilder {
     }
 }
 
+/**
+ * The main function for the action.
+ *
+ * @returns Resolves when the action is complete.
+ */
 async function run() {
     try {
         coreExports.info('Starting NFPM package build process...');
@@ -34034,13 +34039,10 @@ async function run() {
         coreExports.info(`📄 Config file: ${configFile}`);
     }
     catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        coreExports.setFailed(`Action failed: ${errorMessage}`);
+        // Fail the workflow run if an error occurs
+        if (error instanceof Error)
+            coreExports.setFailed(error.message);
     }
-}
-// Execute if this is the main module
-if (require.main === module) {
-    run();
 }
 
 export { run };

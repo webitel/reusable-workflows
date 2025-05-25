@@ -3,6 +3,11 @@ import * as io from '@actions/io';
 import { ConfigGenerator, ContentFileParser, FileValidator  } from './config.ts'
 import { NFPMInstaller, PackageBuilder } from './nfpm.ts';
 
+/**
+ * The main function for the action.
+ *
+ * @returns Resolves when the action is complete.
+ */
 export async function run(): Promise<void> {
     try {
         core.info('Starting NFPM package build process...');
@@ -38,12 +43,7 @@ export async function run(): Promise<void> {
         core.info(`📄 Config file: ${configFile}`);
 
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        core.setFailed(`Action failed: ${errorMessage}`);
+        // Fail the workflow run if an error occurs
+        if (error instanceof Error) core.setFailed(error.message)
     }
-}
-
-// Execute if this is the main module
-if (require.main === module) {
-    run();
 }
