@@ -65,6 +65,12 @@ inputs:
       incremented if you release an updated package of the same upstream version,
       and it should reset to 1 when bumping the version.
 
+  prerelease:
+    required: false
+    description: |
+      Version Prerelease.
+      This is appended to the `version`, e.g. `1.2.3+beta1`
+
   section:
     required: false
     default: default

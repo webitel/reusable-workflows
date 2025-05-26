@@ -31046,6 +31046,7 @@ class ConfigGenerator {
         const arch = coreExports.getInput('arch') || 'amd64';
         const platform = coreExports.getInput('platform') || 'linux';
         const release = coreExports.getInput('release') || '1';
+        const prerelease = coreExports.getInput('prerelease') || '';
         const section = coreExports.getInput('section') || 'default';
         const priority = coreExports.getInput('priority') || 'optional';
         const vendor = coreExports.getInput('vendor') || '';
@@ -31071,6 +31072,9 @@ class ConfigGenerator {
         // Add optional fields if provided
         if (release !== '1') {
             config.release = release;
+        }
+        if (prerelease) {
+            config.prerelease = release;
         }
         if (vendor) {
             config.vendor = vendor;
