@@ -7,7 +7,7 @@ export interface ContentFile {
     dst: string;
     type?: 'file' | 'dir' | 'config' | 'symlink';
     file_info?: {
-        mode?: string;
+        mode?: string; // FIXME: nFPM unmarshal config: cannot unmarshal !!str `0644` into fs.FileMode
         owner?: string;
         group?: string;
     };
@@ -103,7 +103,7 @@ export class ConfigGenerator {
         }
 
         if (prerelease) {
-            config.prerelease = release
+            config.prerelease = prerelease
         }
 
         if (vendor) {

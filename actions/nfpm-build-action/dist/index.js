@@ -31074,7 +31074,7 @@ class ConfigGenerator {
             config.release = release;
         }
         if (prerelease) {
-            config.prerelease = release;
+            config.prerelease = prerelease;
         }
         if (vendor) {
             config.vendor = vendor;
