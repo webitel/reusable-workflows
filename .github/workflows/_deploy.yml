@@ -3,6 +3,15 @@ name: Deploy
 on:
   workflow_call:
     inputs:
+      create-tag:
+        type: boolean
+        required: false
+
+      version:
+        type: string
+        required: false
+        description: Package version to create tag.
+
       component:
         type: string
         required: false
@@ -123,3 +132,33 @@ jobs:
           codename: ${{ vars.DEB_CODENAME }}
           gpg-private-key: ${{ secrets.REPO_SIGNING_KEY }}
           gpg-passphrase: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}
+
+  release:
+    name: Release assets
+    needs: [ check-latest, repository ]
+    runs-on: [ arc-c-runner-set ]
+    if: | 
+      inputs.repository-environment != 'acceptance' 
+        && inputs.create-tag 
+        && inputs.version != ''
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: build-packages
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: Release ${{ inputs.version }}
+          target_commitish: ${{ github.sha }}
+          make_latest: ${{ needs.check-latest.outputs.latest }}
+          draft: false
+          generate_release_notes: true
+          files: dist/*
