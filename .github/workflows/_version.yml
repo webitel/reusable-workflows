@@ -30,6 +30,9 @@ on:
         value: ${{ jobs.parse.outputs.version }}
         description: Extracted version
 
+      version-build:
+        value: ${{ jobs.parse.outputs.version-build }}
+
 jobs:
   parse:
     name: Parse
@@ -37,6 +40,7 @@ jobs:
     outputs:
       version: ${{ steps.parse-version.outputs.version }}
       component: ${{ steps.parse-version.outputs.component }}
+      version-build: ${{ steps.parse-version.outputs.version-build }}
 
     steps:
       - name: Parse version
@@ -56,9 +60,9 @@ jobs:
             local year=$(date +"%y")  
             local month=$(date +"%m") 
             local month_without_leading_zero=$(echo "$month" | sed 's/^0//')  # Remove leading zero
-            local version="v${year}.${month_without_leading_zero}-${component}.${build_number}"
+            local version="v${year}.${month_without_leading_zero}"
 
-            echo "$version" "$component"
+            echo "$version" "$component" "$component.$build_number"
           }
 
           extract_release() {
@@ -75,17 +79,18 @@ jobs:
 
             # Remove leading zero from month part
             local month_without_leading_zero=$(echo "$month" | sed 's/^0//')
-            local version="v${year}.${month_without_leading_zero}-${build_number}"
+            local version="v${year}.${month_without_leading_zero}"
 
-            echo "$version" "$component"
+            echo "$version" "$component" "$build_number"
           }
 
-          read version component < <(extract_development "$BUILD_NUMBER")
+          read version component version-build < <(extract_development "$BUILD_NUMBER")
           if [[ "$TRIGGERED_BRANCH" != "$DEVELOPMENT_BRANCH" ]]; then
-            read version component < <(extract_release "$TRIGGERED_BRANCH" "$BUILD_NUMBER")
+            read version component version-build < <(extract_release "$TRIGGERED_BRANCH" "$BUILD_NUMBER")
           fi
 
-          echo "Extracted version: $version, component: $component"
+          echo "Extracted version: $version, component: $component, version-build: $version-build"
 
           echo "version=${version}" >> $GITHUB_OUTPUT
           echo "component=${component}" >> $GITHUB_OUTPUT
+          echo "version-build=${version-build}" >> $GITHUB_OUTPUT

@@ -40,6 +40,9 @@ on:
         value: ${{ jobs.version.outputs.version }}
         description: Extracted version
 
+      version-build:
+        value: ${{ jobs.version.outputs.version-build }}
+
 jobs:
   version:
     name: Version

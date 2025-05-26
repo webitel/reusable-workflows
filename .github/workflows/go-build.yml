@@ -8,6 +8,10 @@ on:
         required: true
         type: string
 
+      version-build:
+        required: true
+        type: string
+
       source:
         description: Build artifact (e.g., .deb package)
         required: true
@@ -38,7 +42,7 @@ jobs:
       - name: Build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ inputs.version }}
+          GORELEASER_CURRENT_TAG: ${{ inputs.version }}-${{ inputs.version-build }}
           BUILD_NUMBER: ${{ github.run_number }}
         run: goreleaser release --clean --skip publish --skip validate
 
