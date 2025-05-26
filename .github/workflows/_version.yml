@@ -84,13 +84,13 @@ jobs:
             echo "$version" "$component" "$build_number"
           }
 
-          read version component version-build < <(extract_development "$BUILD_NUMBER")
+          read version component version_build < <(extract_development "$BUILD_NUMBER")
           if [[ "$TRIGGERED_BRANCH" != "$DEVELOPMENT_BRANCH" ]]; then
-            read version component version-build < <(extract_release "$TRIGGERED_BRANCH" "$BUILD_NUMBER")
+            read version component version_build < <(extract_release "$TRIGGERED_BRANCH" "$BUILD_NUMBER")
           fi
 
-          echo "Extracted version: $version, component: $component, version-build: $version-build"
+          echo "Extracted version: $version, component: $component, version-build: $version_build"
 
           echo "version=${version}" >> $GITHUB_OUTPUT
           echo "component=${component}" >> $GITHUB_OUTPUT
-          echo "version-build=${version-build}" >> $GITHUB_OUTPUT
+          echo "version-build=${version_build}" >> $GITHUB_OUTPUT
