@@ -1,0 +1,129 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      args:
+        type: string
+        required: false
+        description: |
+          Additional arguments to pass during the CMake configuration, suffixed by \.
+          See: https://cmake.org/cmake/help/latest/manual/cmake.1.html#options
+          Example: 
+          ```
+            -DFREESWITCH_INCLUDE_DIR=/usr/include/freeswitch \
+            -DINSTALL_MOD_DIR=/usr/local/freeswitch/mod \
+            -DCMAKE_BUILD_TYPE=Release
+          ```
+
+      build-args:
+        type: string
+        required: false
+        description: |
+          Additional arguments to pass during the CMake build.
+          Already added `--parallel $(nproc)` if input `parallel` is omitted.
+          See: https://cmake.org/cmake/help/latest/manual/cmake.1.html#build-a-project
+
+      parallel:
+        type: number
+        required: false
+        default: 0
+        description: |
+          The maximum number of concurrent processes to use when building. 
+          See: https://cmake.org/cmake/help/latest/manual/cmake.1.html#cmdoption-cmake-build-j
+
+      upload-artifact-pattern:
+        type: string
+        required: true
+        description: A file, directory or wildcard pattern that describes what to upload as build-source artifact.
+
+      version:
+        type: string
+        required: true
+
+      prerelease:
+        type: string
+        required: false
+
+      package-name:
+        type: string
+        required: true
+
+      package-description:
+        type: string
+        required: true
+
+      package-contents:
+        type: string
+        required: true
+        description: |
+          Package contents specification in nFPM format.
+          See: https://github.com/webitel/reusable-workflows/tree/main/actions/nfpm-build-action#contents-format
+
+jobs:
+  compile:
+    name: Module
+    runs-on: [ arc-c-runner-set ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Configure build files
+        run: |
+          cmake -B build ${{ inputs.args }}
+
+      - name: Determine parallel jobs
+        id: parallel
+        run: |
+          if [ "${{ inputs.parallel }}" != "0" ]; then
+            echo "jobs=${{ inputs.parallel }}" >> $GITHUB_OUTPUT
+          else
+            echo "jobs=$(nproc)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compile
+        run: cmake --build build -j ${{ steps.parallel.outputs.jobs }} ${{ inputs.build-args }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-source
+          compression-level: 9
+          path: ${{ inputs.upload-artifact-pattern }}
+
+  build:
+    name: Package
+    needs: [ compile ]
+    runs-on: [ arc-c-runner-set ]
+    steps:
+      - name: Download compiled file
+        uses: actions/download-artifact@v4
+        with:
+          name: build-source
+
+      - name: Build package
+        id: build
+        uses: webitel/reusable-workflows/actions/nfpm-build-action@main
+        with:
+          nfpm-version: latest
+          formats: deb
+          target: dist
+          maintainer: Webitel <support@webitel.com>
+          homepage: https://webitel.com
+          arch: amd64
+          platform: linux
+          package-name: ${{ inputs.package-name }}
+          package-description: ${{ inputs.package-description }}
+          version: ${{ inputs.version }}
+          release: ${{ github.run_number }}
+          prerelease: ${{ inputs.prerelease }}
+          contents: ${{ inputs.package-contents }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-packages
+          compression-level: 9
+          path: dist
