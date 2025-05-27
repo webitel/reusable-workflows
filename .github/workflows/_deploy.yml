@@ -137,11 +137,7 @@ jobs:
     name: Release assets
     needs: [ check-latest, repository ]
     runs-on: [ arc-c-runner-set ]
-    if: | 
-      inputs.repository-environment != 'acceptance' 
-        && inputs.create-tag 
-        && inputs.version != ''
-
+    if: inputs.repository-environment != 'acceptance' && inputs.create-tag == true && inputs.version != ''
     permissions:
       contents: write
 
