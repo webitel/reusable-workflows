@@ -135,9 +135,13 @@ jobs:
 
   release:
     name: Release assets
-    needs: [ check-latest ]
+    needs: [ check-latest, staging ]
     runs-on: [ arc-runner-set ]
-    if: inputs.repository-environment != 'acceptance' && inputs.create-tag == true && inputs.version != ''
+    if: |
+      always() && !cancelled() &&
+      ((inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.latest == 'true' && needs.staging.result == 'success') ||
+        (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.latest != 'true')) &&
+      inputs.repository-environment != 'acceptance' && inputs.create-tag == true && inputs.version != ''
     permissions:
       contents: write
 
