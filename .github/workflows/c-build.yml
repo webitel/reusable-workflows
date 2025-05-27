@@ -45,6 +45,10 @@ on:
         type: string
         required: true
 
+      version-metadata:
+        type: string
+        required: false
+
       prerelease:
         type: string
         required: false
@@ -123,6 +127,7 @@ jobs:
           version: ${{ inputs.version }}
           release: ${{ inputs.version-build }}
           prerelease: ${{ inputs.prerelease }}
+          version-metadata: ${{ inputs.version-metadata }}
           contents: ${{ inputs.package-contents }}
 
       - name: Upload artifacts
