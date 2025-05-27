@@ -27,6 +27,7 @@ export interface NFPMConfig {
     version: string;
     release?: string;
     prerelease?: string;
+    version_metadata?: string;
     section: string;
     priority: string;
     maintainer: string;
@@ -73,6 +74,7 @@ export class ConfigGenerator {
         const platform = core.getInput('platform') || 'linux';
         const release = core.getInput('release') || '1';
         const prerelease = core.getInput('prerelease') || '';
+        const version_metadata = core.getInput('version-metadata') || '';
         const section = core.getInput('section') || 'default';
         const priority = core.getInput('priority') || 'optional';
         const vendor = core.getInput('vendor') || '';
@@ -104,6 +106,10 @@ export class ConfigGenerator {
 
         if (prerelease) {
             config.prerelease = prerelease
+        }
+
+        if (version_metadata) {
+            config.version_metadata = version_metadata
         }
 
         if (vendor) {

@@ -31047,6 +31047,7 @@ class ConfigGenerator {
         const platform = coreExports.getInput('platform') || 'linux';
         const release = coreExports.getInput('release') || '1';
         const prerelease = coreExports.getInput('prerelease') || '';
+        const version_metadata = coreExports.getInput('version-metadata') || '';
         const section = coreExports.getInput('section') || 'default';
         const priority = coreExports.getInput('priority') || 'optional';
         const vendor = coreExports.getInput('vendor') || '';
@@ -31075,6 +31076,9 @@ class ConfigGenerator {
         }
         if (prerelease) {
             config.prerelease = prerelease;
+        }
+        if (version_metadata) {
+            config.version_metadata = version_metadata;
         }
         if (vendor) {
             config.vendor = vendor;

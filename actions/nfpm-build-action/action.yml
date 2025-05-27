@@ -71,6 +71,10 @@ inputs:
       Version Prerelease.
       This is appended to the `version`, e.g. `1.2.3+beta1`
 
+  version-metadata:
+    required: false
+    description: Version Metadata (previously deb.metadata).
+
   section:
     required: false
     default: default
