@@ -92,7 +92,7 @@ on:
 jobs:
   prepare:
     name: Prepare
-    uses: webitel/reusable-workflows/.github/workflows/go-template-prepare.yml@${{ inputs.workflow-ref }}
+    uses: webitel/reusable-workflows/.github/workflows/go-template-prepare.yml@feat/organize
     with:
       development-branch: ${{ inputs.development-branch }}
       triggered-branch: ${{ inputs.triggered-branch }}
@@ -102,7 +102,7 @@ jobs:
   checks:
     name: Checks
     needs: [ prepare ]
-    uses: webitel/reusable-workflows/.github/workflows/go-template-checks.yml@${{ inputs.workflow-ref }}
+    uses: webitel/reusable-workflows/.github/workflows/go-template-checks.yml@feat/organize
     permissions:
       contents: read
       actions: read
@@ -114,7 +114,7 @@ jobs:
   compile:
     name: Build
     needs: [ prepare ]
-    uses: webitel/reusable-workflows/.github/workflows/go-template-build.yml@${{ inputs.workflow-ref }}
+    uses: webitel/reusable-workflows/.github/workflows/go-template-build.yml@feat/organize
     with:
       main-path: ${{ inputs.main-path }}
       binary-name: ${{ inputs.binary-name }}
@@ -131,7 +131,7 @@ jobs:
   deploy:
     name: Deploy
     needs: [ prepare, compile ]
-    uses: webitel/reusable-workflows/.github/workflows/_deploy.yml@${{ inputs.workflow-ref }}
+    uses: webitel/reusable-workflows/.github/workflows/_deploy.yml@feat/organize
     permissions: { contents: write }
     secrets: inherit
     with:
