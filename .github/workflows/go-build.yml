@@ -112,6 +112,7 @@ jobs:
         with:
           name: build-source
           compression-level: 9
+          include-hidden-files: true
           path: |
             dummy-file-to-keep-directory-structure.txt
             ${{ inputs.upload-artifact-pattern }}
