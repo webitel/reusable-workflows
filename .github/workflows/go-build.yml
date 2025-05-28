@@ -34,7 +34,7 @@ on:
           ```
             ldflags: >
               -s -w
-              -X github.com/webitel/repository/cmd.commit=${{ github.sha }}
+              -X github.com/webitel/repository/cmd.commit=COMMIT_SHA
           ```
           
           See: https://pkg.go.dev/cmd/link
