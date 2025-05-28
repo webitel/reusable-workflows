@@ -19,7 +19,7 @@ on:
 jobs:
   prepare:
     name: Prepare
-    uses: webitel/reusable-workflows/.github/workflows/templates/golang/prepare.yml@${{ inputs.workflow-ref }}
+    uses: webitel/reusable-workflows/.github/workflows/go-template-prepare.yml@${{ inputs.workflow-ref }}
     with:
       only-dependencies: true
       generated-code-path: ${{ inputs.generated-code-path }}
@@ -27,7 +27,7 @@ jobs:
   checks:
     name: Checks
     needs: [ prepare ]
-    uses: webitel/reusable-workflows/.github/workflows/templates/golang/checks.yml@${{ inputs.workflow-ref }}
+    uses: webitel/reusable-workflows/.github/workflows/go-template-checks.yml@${{ inputs.workflow-ref }}
     permissions:
       contents: read
       actions: read
