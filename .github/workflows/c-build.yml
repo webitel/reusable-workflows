@@ -99,7 +99,9 @@ jobs:
         with:
           name: build-source
           compression-level: 9
-          path: ${{ inputs.upload-artifact-pattern }}
+          path: |
+            dummy-file-to-keep-directory-structure.txt
+            ${{ inputs.upload-artifact-pattern }}
 
   build:
     name: Package

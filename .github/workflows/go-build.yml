@@ -3,6 +3,47 @@ name: Build
 on:
   workflow_call:
     inputs:
+      main-path:
+        type: string
+        required: false
+        default: .
+        description: Path to main.go (e.g., ./cmd/app or .)
+
+      binary-name:
+        type: string
+        required: true
+
+      build-args:
+        type: string
+        required: false
+        default: -trimpath
+        description: |
+          Traversed as: go build [build-args]
+          See: https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies
+
+      ldflags:
+        type: string
+        required: false
+        default: -s -w
+        description: |
+          Additional arguments to pass on each go tool link invocation, 
+          that combines the Go archive or object for a package main, 
+          along with its dependencies into an executable binary.
+          Traversed as: go build -ldflags="[ldflags]"
+          Example:
+          ```
+            ldflags: >
+              -s -w
+              -X github.com/webitel/repository/cmd.commit=${{ github.sha }}
+          ```
+          
+          See: https://pkg.go.dev/cmd/link
+
+      upload-artifact-pattern:
+        type: string
+        required: true
+        description: A file, directory or wildcard pattern that describes what to upload as build-source artifact.
+
       version:
         description: Extracted version to use for the build
         required: true
@@ -12,10 +53,28 @@ on:
         required: true
         type: string
 
-      source:
-        description: Build artifact (e.g., .deb package)
-        required: true
+      version-metadata:
         type: string
+        required: false
+
+      prerelease:
+        type: string
+        required: false
+
+      package-name:
+        type: string
+        required: true
+
+      package-description:
+        type: string
+        required: true
+
+      package-contents:
+        type: string
+        required: true
+        description: |
+          Package contents specification in nFPM format.
+          See: https://github.com/webitel/reusable-workflows/tree/main/actions/nfpm-build-action#contents-format
 
       generated-code:
         type: string
@@ -25,13 +84,13 @@ on:
 
 jobs:
   compile:
-    name: Compile application
+    name: Application
     runs-on: [ arc-runner-set ]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # required for the changelog to work correctly
+          fetch-depth: 2
 
       - name: Download generated code
         if: inputs.generated-code == 'true'
@@ -41,14 +100,54 @@ jobs:
 
       - name: Build
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ inputs.version }}-${{ inputs.version-build }}
-          BUILD_NUMBER: ${{ github.run_number }}
-        run: goreleaser release --clean --skip publish --skip validate
+          GOOS: linux
+          GOARCH: amd64
+
+        run: |
+          go build ${{ inputs.build-flags }} -ldflags="${{ inputs.ldflags }}" \
+            -o "${{ inputs.binary-name }}" ${{ inputs.main-path }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-source
+          compression-level: 9
+          path: |
+            dummy-file-to-keep-directory-structure.txt
+            ${{ inputs.upload-artifact-pattern }}
+
+  build:
+    name: Package
+    needs: [ compile ]
+    runs-on: [ arc-runner-set ]
+    steps:
+      - name: Download compiled file
+        uses: actions/download-artifact@v4
+        with:
+          name: build-source
+
+      - name: Build package
+        id: build
+        uses: webitel/reusable-workflows/actions/nfpm-build-action@main
+        with:
+          nfpm-version: latest
+          formats: deb
+          target: dist
+          maintainer: Webitel <support@webitel.com>
+          homepage: https://webitel.com
+          arch: amd64
+          platform: linux
+          package-name: ${{ inputs.package-name }}
+          package-description: ${{ inputs.package-description }}
+          version: ${{ inputs.version }}
+          release: ${{ inputs.version-build }}
+          prerelease: ${{ inputs.prerelease }}
+          version-metadata: ${{ inputs.version-metadata }}
+          contents: ${{ inputs.package-contents }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-packages
           compression-level: 9
-          path: dist/${{ inputs.source }}
+          path: dist
