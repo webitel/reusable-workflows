@@ -1,0 +1,141 @@
+name: Workflow
+
+on:
+  workflow_call:
+    inputs:
+      workflow-ref:
+        type: string
+        required: false
+        default: main
+        description: |
+          Shared workflows will be downloaded by reference. 
+          It can be a SHA, a release tag, or a branch name. 
+          Using the commit SHA is the safest for stability and security.
+
+      development-branch:
+        type: string
+        required: false
+        default: ${{ github.event.repository.default_branch }}
+        description: Name of the development branch
+
+      triggered-branch:
+        type: string
+        required: false
+        default: ${{ github.ref_name }}
+        description: Name of the triggered branch
+
+      build-number:
+        type: string
+        required: false
+        default: ${{ github.run_number }}
+        description: Build number
+
+      generated-code-path:
+        type: string
+        required: false
+
+      main-path:
+        type: string
+        required: false
+        default: .
+        description: Path to main.go (e.g., ./cmd/app or .)
+
+      binary-name:
+        type: string
+        required: true
+
+      build-args:
+        type: string
+        required: false
+        default: -trimpath
+        description: |
+          Traversed as: go build [build-args]
+          See: https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies
+
+      ldflags:
+        type: string
+        required: false
+        default: -s -w
+        description: |
+          Additional arguments to pass on each go tool link invocation, 
+          that combines the Go archive or object for a package main, 
+          along with its dependencies into an executable binary.
+          Traversed as: go build -ldflags="[ldflags]"
+          Example:
+          ```
+            ldflags: >
+              -s -w
+              -X github.com/webitel/repository/cmd.commit=COMMIT_SHA
+          ```
+
+          See: https://pkg.go.dev/cmd/link
+
+      version-metadata:
+        type: string
+        required: false
+
+      package-name:
+        type: string
+        required: true
+
+      package-description:
+        type: string
+        required: true
+
+      package-contents:
+        type: string
+        required: false
+        description: |
+          Package contents specification in nFPM format.
+          See: https://github.com/webitel/reusable-workflows/tree/main/actions/nfpm-build-action#contents-format
+
+jobs:
+  prepare:
+    name: Prepare
+    uses: webitel/reusable-workflows/.github/workflows/templates/golang/prepare.yml@${{ inputs.workflow-ref }}
+    with:
+      development-branch: ${{ inputs.development-branch }}
+      triggered-branch: ${{ inputs.triggered-branch }}
+      build-number: ${{ inputs.build-number }}
+      generated-code-path: ${{ inputs.generated-code-path }}
+
+  checks:
+    name: Checks
+    needs: [ prepare ]
+    uses: webitel/reusable-workflows/.github/workflows/templates/golang/checks.yml@${{ inputs.workflow-ref }}
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
+    with:
+      generated-code: ${{ inputs.generated-code-path != '' }}
+
+  compile:
+    name: Build
+    needs: [ prepare ]
+    uses: webitel/reusable-workflows/.github/workflows/templates/golang/build.yml@${{ inputs.workflow-ref }}
+    with:
+      main-path: ${{ inputs.main-path }}
+      binary-name: ${{ inputs.binary-name }}
+      build-args: ${{ inputs.build-args }}
+      ldflags: ${{ inputs.ldflags }}
+      version: ${{ needs.prepare.outputs.version }}
+      version-build: ${{ inputs.build-number }}
+      version-metadata: ${{ inputs.version-metadata }}
+      prerelease: ${{ inputs.development-branch == inputs.triggered-branch && 'dev' }}
+      package-name: ${{ inputs.package-name }}
+      package-description: ${{ inputs.package-description }}
+      package-contents: ${{ inputs.package-contents }}
+
+  deploy:
+    name: Deploy
+    needs: [ prepare, compile ]
+    uses: webitel/reusable-workflows/.github/workflows/deploy.yml@${{ inputs.workflow-ref }}
+    permissions: { contents: write }
+    secrets: inherit
+    with:
+      component: ${{ needs.prepare.outputs.component }}
+      repository-environment: ${{ needs.prepare.outputs.component == 'dev' && 'acceptance' || needs.prepare.outputs.component }}
+      create-tag: ${{ inputs.development-branch != inputs.triggered-branch }}
+      version: ${{ needs.prepare.outputs.version }}-${{ inputs.build-number }}

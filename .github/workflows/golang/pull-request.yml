@@ -1,0 +1,37 @@
+name: Pull request
+
+on:
+  workflow_call:
+    inputs:
+      workflow-ref:
+        type: string
+        required: false
+        default: main
+        description: |
+          Shared workflows will be downloaded by reference. 
+          It can be a SHA, a release tag, or a branch name. 
+          Using the commit SHA is the safest for stability and security.
+
+      generated-code-path:
+        type: string
+        required: false
+
+jobs:
+  prepare:
+    name: Prepare
+    uses: webitel/reusable-workflows/.github/workflows/templates/golang/prepare.yml@${{ inputs.workflow-ref }}
+    with:
+      only-dependencies: true
+      generated-code-path: ${{ inputs.generated-code-path }}
+
+  checks:
+    name: Checks
+    needs: [ prepare ]
+    uses: webitel/reusable-workflows/.github/workflows/templates/golang/checks.yml@${{ inputs.workflow-ref }}
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
+    with:
+      generated-code: ${{ inputs.generated-code-path != '' }}
