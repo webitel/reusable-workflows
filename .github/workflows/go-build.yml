@@ -111,7 +111,7 @@ jobs:
             core.info('Raw package contents:');
             core.info(packageContents);
             
-            // Parse package contents and extract src paths where type != 'dir'
+            // Parse package contents and extract src paths
             const artifactPaths = packageContents
               .split('\n')
               .map(line => line.trim())
@@ -127,8 +127,8 @@ jobs:
                 };
               })
               .filter(item => {
-                if (!item.src || !item.type) {
-                  core.warning(`Skipping invalid line: ${item.line}`);
+                if (!item.src) {
+                  core.warning(`Skipping invalid line (missing src): ${item.line}`);
                   return false;
                 }
             
@@ -137,7 +137,8 @@ jobs:
                   return false;
                 }
             
-                core.info(`✓ Including file: ${item.src} (type: ${item.type})`);
+                // Include files regardless of type or missing type
+                core.info(`✓ Including file: ${item.src}${item.type ? ` (type: ${item.type})` : ' (type not specified)'}`);
                 return true;
               })
               .map(item => item.src);
