@@ -2,27 +2,57 @@ name: Deploy
 
 on:
   workflow_call:
-    inputs:
-      create-tag:
-        type: boolean
-        required: false
+    secrets:
+      DEPLOYMENTS_SSH_USER: { required: true }
+      DEPLOYMENTS_SSH_PRIVATE_KEY: { required: true }
+      DEPLOYMENTS_SSH_HOST_DEVELOPMENT: { required: true }
+      DEPLOYMENTS_SSH_HOST_TESTING: { required: true }
+      DEPLOYMENTS_SSH_HOST_STAGING: { required: true }
+      DEB_AWS_ACCESS_KEY_ID: { required: true }
+      DEB_AWS_SECRET_ACCESS_KEY: { required: true }
+      REPO_SIGNING_KEY: { required: true }
+      REPO_SIGNING_KEY_PASSPHRASE: { required: true }
 
-      version:
+    inputs:
+      tag:
         type: string
         required: false
         description: Package version to create tag.
 
-      component:
+      tag-target-commitish:
         type: string
         required: false
-        default: dev
-        description: Component of the APT repository
+        default: ${{ github.sha }}
 
       repository-environment:
         type: string
         required: false
         default: acceptance
-        description: Linked environment for upload build to repository (eg. acceptance, v25.04-releases, ...)
+        description: Linked environment for upload build to repository (eg. acceptance, v25.04-releases, ...).
+
+      deb-package-pattern:
+        type: string
+        required: true
+        description: A path pattern to artifact, that should be uploaded to environments and installed.
+
+      deb-component:
+        type: string
+        required: false
+        default: dev
+        description: Component of the APT repository.
+
+      deb-codename:
+        type: string
+        required: true
+        description: Nickname used for specific Debian releases.
+
+      deb-aws-bucket-name:
+        type: string
+        required: true
+
+      deb-aws-bucket-region:
+        type: string
+        required: true
 
 jobs:
   development:
@@ -34,8 +64,7 @@ jobs:
       - name: Deploy
         uses: webitel/reusable-workflows/actions/deploy-action@main
         with:
-          service: ${{ vars.SYSTEMD_SERVICE }}
-          source: ${{ vars.PACKAGE_PATTERN }}
+          source: ${{ inputs.deb-package-pattern }}
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_DEVELOPMENT }}
           user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
           private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
@@ -50,8 +79,7 @@ jobs:
       - name: Deploy
         uses: webitel/reusable-workflows/actions/deploy-action@main
         with:
-          service: ${{ vars.SYSTEMD_SERVICE }}
-          source: ${{ vars.PACKAGE_PATTERN }}
+          source: ${{ inputs.deb-package-pattern }}
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_TESTING }}
           user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
           private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
@@ -96,8 +124,7 @@ jobs:
       - name: Deploy
         uses: webitel/reusable-workflows/actions/deploy-action@main
         with:
-          service: ${{ vars.SYSTEMD_SERVICE }}
-          source: ${{ vars.PACKAGE_PATTERN }}
+          source: ${{ inputs.deb-package-pattern }}
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_STAGING }}
           user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
           private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
@@ -123,13 +150,13 @@ jobs:
       - name: Publish build
         uses: webitel/reusable-workflows/actions/deb-s3-upload-action@main
         with:
-          source: ${{ vars.PACKAGE_PATTERN }}
-          aws-bucket-name: ${{ vars.DEB_AWS_BUCKET_NAME }}
-          aws-bucket-region: ${{ vars.DEB_AWS_DEFAULT_REGION }}
+          source: ${{ inputs.deb-package-pattern }}
+          component: ${{ inputs.component }}
+          codename: ${{ inputs.deb-codename }}
+          aws-bucket-name: ${{ inputs.deb-aws-bucket-name }}
+          aws-bucket-region: ${{ inputs.deb-aws-bucket-region }}
           aws-secret-id: ${{ secrets.DEB_AWS_ACCESS_KEY_ID }}
           aws-secret-key: ${{ secrets.DEB_AWS_SECRET_ACCESS_KEY }}
-          component: ${{ inputs.component }}
-          codename: ${{ vars.DEB_CODENAME }}
           gpg-private-key: ${{ secrets.REPO_SIGNING_KEY }}
           gpg-passphrase: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}
 
@@ -138,13 +165,11 @@ jobs:
     needs: [ check-latest, staging ]
     runs-on: [ arc-runner-set ]
     if: |
-      always() && !cancelled() &&
+      always() && !cancelled() && inputs.repository-environment != 'acceptance' && inputs.tag != '' &&
       ((inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.latest == 'true' && needs.staging.result == 'success') ||
-        (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.latest != 'true')) &&
-      inputs.repository-environment != 'acceptance' && inputs.create-tag == true && inputs.version != ''
-    permissions:
-      contents: write
+        (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.latest != 'true'))
 
+    permissions: { contents: write }
     steps:
       - name: Download package
         uses: actions/download-artifact@v4
@@ -155,10 +180,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.version }}
-          name: Release ${{ inputs.version }}
-          target_commitish: ${{ github.sha }}
+          name: Release ${{ inputs.tag }}
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ inputs.tag-target-commitish }}
           make_latest: ${{ needs.check-latest.outputs.latest }}
-          draft: false
           generate_release_notes: true
+          draft: false
           files: dist/*

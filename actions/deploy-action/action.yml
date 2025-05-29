@@ -53,13 +53,3 @@ runs:
         script: |
           sudo DEBIAN_FRONTEND=noninteractive dpkg --install --force-confold ~/dist/${{ inputs.source }}
           rm ~/dist/${{ inputs.source }}
-
-    - name: Restart service
-      uses: appleboy/ssh-action@v1.2.2
-      if: inputs.service != ''
-      with:
-        host: ${{ inputs.host }}
-        username: ${{ inputs.user }}
-        key: ${{ inputs.private-key }}
-        script: |
-          sudo systemctl restart ${{ inputs.service }}
