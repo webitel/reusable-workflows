@@ -31118,8 +31118,7 @@ class ContentFileParser {
     static parseKeyValueLine(line) {
         const file = {
             src: '',
-            dst: '',
-            type: 'file'
+            dst: ''
         };
         // Split by spaces but preserve quoted values
         const parts = line.match(/(\w+)=("([^"]*)"|'([^']*)'|[^\s]+)/g);

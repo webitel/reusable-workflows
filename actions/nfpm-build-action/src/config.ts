@@ -168,8 +168,7 @@ export class ContentFileParser {
     private static parseKeyValueLine(line: string): ContentFile {
         const file: ContentFile = {
             src: '',
-            dst: '',
-            type: 'file'
+            dst: ''
         };
 
         // Split by spaces but preserve quoted values
