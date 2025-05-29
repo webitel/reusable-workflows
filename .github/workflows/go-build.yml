@@ -194,7 +194,7 @@ jobs:
           prerelease: ${{ inputs.prerelease }}
           version-metadata: ${{ inputs.version-metadata }}
           contents: |
-            src=${{ inputs.binary-name }} dst=/usr/local/bin/${{ inputs.binary-name }} type=file
+            src=${{ inputs.binary-name }} dst=/usr/local/bin/${{ inputs.binary-name }} type=file mode=0755
             ${{ inputs.package-contents }}
 
       - name: Upload artifacts
