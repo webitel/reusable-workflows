@@ -132,8 +132,8 @@ jobs:
                   return false;
                 }
             
-                if (item.type === 'dir') {
-                  core.info(`Skipping directory: ${item.src}`);
+                if (item.type === 'symlink') {
+                  core.info(`Skipping symlink: ${item.src}`);
                   return false;
                 }
             
