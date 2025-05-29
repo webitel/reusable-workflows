@@ -31015,44 +31015,29 @@ var dump_1 = dump$1;
 var dumper = {
 	dump: dump_1
 };
-
-
-var Type                = type;
-var DEFAULT_SCHEMA      = _default;
 var load                = loader.load;
 var dump                = dumper.dump;
 
-// Create a custom YAML schema to preserve octal number format
-const customYamlType = new Type('tag:yaml.org,2002:int', {
-    kind: 'scalar',
-    resolve: function (data) {
-        return data !== null && (data === '0' || /^0[0-7]+$/.test(data) || /^[-+]?[1-9][0-9]*$/.test(data));
-    },
-    construct: function (data) {
-        // Just return the original string to preserve format
-        return data;
-    }
-});
-const CUSTOM_SCHEMA = DEFAULT_SCHEMA.extend({ implicit: [customYamlType] });
 class ConfigGenerator {
     static async generateNFPMConfig(configFile, contentFiles) {
-        coreExports.info('Generating NFPM configuration...');
-        // Get required inputs directly
-        const packageName = this.getRequiredInput('package-name');
-        const packageDescription = this.getRequiredInput('package-description');
-        const version = this.getRequiredInput('version');
-        const maintainer = this.getRequiredInput('maintainer');
-        // Get optional inputs with defaults
-        const arch = coreExports.getInput('arch') || 'amd64';
-        const platform = coreExports.getInput('platform') || 'linux';
-        const release = coreExports.getInput('release') || '1';
-        const prerelease = coreExports.getInput('prerelease') || '';
-        const version_metadata = coreExports.getInput('version-metadata') || '';
-        const section = coreExports.getInput('section') || 'default';
-        const priority = coreExports.getInput('priority') || 'optional';
-        const vendor = coreExports.getInput('vendor') || '';
-        const homepage = coreExports.getInput('homepage') || '';
-        const license = coreExports.getInput('license') || '';
+        coreExports.startGroup('Generating nFPM configuration...');
+        const config = {
+            name: coreExports.getInput('package-name'),
+            description: coreExports.getInput('package-description'),
+            vendor: coreExports.getInput('vendor') || '',
+            maintainer: coreExports.getInput('maintainer'),
+            homepage: coreExports.getInput('homepage') || '',
+            license: coreExports.getInput('license') || '',
+            arch: coreExports.getInput('arch') || 'amd64',
+            platform: coreExports.getInput('platform') || 'linux',
+            section: coreExports.getInput('section') || 'default',
+            priority: coreExports.getInput('priority') || 'optional',
+            version: coreExports.getInput('version'),
+            release: coreExports.getInput('release') || '1',
+            prerelease: coreExports.getInput('prerelease') || '',
+            version_metadata: coreExports.getInput('version-metadata') || '',
+            umask: parseInt(coreExports.getInput('umask'), 8) || 0o002
+        };
         const depends = coreExports.getInput('depends') || '';
         const recommends = coreExports.getInput('recommends') || '';
         const suggests = coreExports.getInput('suggests') || '';
@@ -31060,35 +31045,6 @@ class ConfigGenerator {
         const replaces = coreExports.getInput('replaces') || '';
         const provides = coreExports.getInput('provides') || '';
         const scripts = coreExports.getInput('scripts') || '';
-        const config = {
-            name: packageName,
-            arch: arch,
-            platform: platform,
-            version: version,
-            section: section,
-            priority: priority,
-            maintainer: maintainer,
-            description: packageDescription
-        };
-        // Add optional fields if provided
-        if (release !== '1') {
-            config.release = release;
-        }
-        if (prerelease) {
-            config.prerelease = prerelease;
-        }
-        if (version_metadata) {
-            config.version_metadata = version_metadata;
-        }
-        if (vendor) {
-            config.vendor = vendor;
-        }
-        if (homepage) {
-            config.homepage = homepage;
-        }
-        if (license) {
-            config.license = license;
-        }
         // Add dependency arrays if provided
         this.addDependencyArray(config, 'depends', depends);
         this.addDependencyArray(config, 'recommends', recommends);
@@ -31096,32 +31052,21 @@ class ConfigGenerator {
         this.addDependencyArray(config, 'conflicts', conflicts);
         this.addDependencyArray(config, 'replaces', replaces);
         this.addDependencyArray(config, 'provides', provides);
-        // Add content files if provided
         if (contentFiles.length > 0) {
             config.contents = contentFiles;
         }
-        // Add scripts if provided
         if (scripts.trim()) {
             config.scripts = this.parseScripts(scripts);
         }
-        // Write configuration file
-        const yamlContent = dump(config, {
-            indent: 2,
-            lineWidth: -1,
-            noRefs: true,
-        });
+        // Use the string replacement method for reliable unquoted octal values
+        const yamlContent = objectToYamlWithOctalStringReplace(config, ['umask', 'mode'], // Fields to convert to octal
+        { includePrefix: true } // Include '0o' prefix
+        );
         await promises.writeFile(configFile, yamlContent);
-        coreExports.info('Generated NFPM configuration:');
         coreExports.info('==============================');
         coreExports.info(yamlContent);
         coreExports.info('==============================');
-    }
-    static getRequiredInput(name) {
-        const value = coreExports.getInput(name);
-        if (!value) {
-            throw new Error(`Required input '${name}' is missing`);
-        }
-        return value;
+        coreExports.endGroup();
     }
     static addDependencyArray(config, key, input) {
         if (input.trim()) {
@@ -31156,70 +31101,10 @@ class ConfigGenerator {
 }
 class ContentFileParser {
     static parse(contentsInput) {
-        if (!contentsInput.trim()) {
+        const input = contentsInput.trim();
+        if (!input) {
             return [];
         }
-        const input = contentsInput.trim();
-        // Try to parse as YAML first
-        if (input.startsWith('-') || input.startsWith('contents:')) {
-            return this.parseYamlFormat(input);
-        }
-        // Parse as key-value format
-        return this.parseKeyValueFormat(input);
-    }
-    static parseYamlFormat(yamlInput) {
-        try {
-            let parsedYaml;
-            // Handle both array format and object format
-            // Use the custom schema to preserve number formats
-            if (yamlInput.startsWith('contents:')) {
-                parsedYaml = load(yamlInput, { schema: CUSTOM_SCHEMA });
-                parsedYaml = parsedYaml.contents;
-            }
-            else {
-                parsedYaml = load(yamlInput, { schema: CUSTOM_SCHEMA });
-            }
-            if (!Array.isArray(parsedYaml)) {
-                throw new Error('YAML contents must be an array');
-            }
-            const contentFiles = parsedYaml.map((file, index) => {
-                if (!file.src || !file.dst) {
-                    throw new Error(`Content file at index ${index} must have 'src' and 'dst' properties`);
-                }
-                const type = file.type || 'file';
-                if (!['file', 'dir', 'config', 'symlink'].includes(type)) {
-                    throw new Error(`Invalid type "${type}" at index ${index}. Must be one of: file, dir, config, symlink`);
-                }
-                // Create the content file object
-                const contentFile = {
-                    src: file.src,
-                    dst: file.dst,
-                    type: type
-                };
-                // Handle file_info
-                if (file.mode !== undefined || file.owner || file.group || file.file_info) {
-                    contentFile.file_info = {};
-                    // Preserve mode exactly as it was in the YAML (string or number)
-                    if (file.mode !== undefined) {
-                        contentFile.file_info.mode = file.mode;
-                    }
-                    else if (file.file_info?.mode !== undefined) {
-                        contentFile.file_info.mode = file.file_info.mode;
-                    }
-                    contentFile.file_info.owner = file.owner || file.file_info?.owner;
-                    contentFile.file_info.group = file.group || file.file_info?.group;
-                }
-                return contentFile;
-            });
-            coreExports.info(`Parsed ${contentFiles.length} content files from YAML`);
-            this.logContentFiles(contentFiles);
-            return contentFiles;
-        }
-        catch (error) {
-            throw new Error(`Failed to parse YAML contents: ${error.message}`);
-        }
-    }
-    static parseKeyValueFormat(input) {
         const contentFiles = [];
         const lines = input.split('\n').map(line => line.trim()).filter(line => line);
         for (const line of lines) {
@@ -31254,7 +31139,7 @@ class ContentFileParser {
                 case 'mode':
                     if (!file.file_info)
                         file.file_info = {};
-                    file.file_info.mode = cleanValue.toString();
+                    file.file_info.mode = parseInt(cleanValue, 8); // converts '0644' to 420
                     break;
                 case 'owner':
                     if (!file.file_info)
@@ -31303,6 +31188,82 @@ class FileValidator {
             }
         }
     }
+}
+function objectToYamlWithOctalStringReplace(obj, fieldNames, options) {
+    const { includePrefix = true } = options || {};
+    // Create a map of original values to octal strings
+    const octalMap = new Map();
+    const placeholderMap = new Map();
+    function collectOctalValues(current) {
+        if (typeof current === 'object' && current !== null) {
+            for (const [key, value] of Object.entries(current)) {
+                if (fieldNames.includes(key) && typeof value === 'number' && Number.isInteger(value)) {
+                    const num = value;
+                    if (!octalMap.has(num)) {
+                        const octalValue = num.toString(8);
+                        const finalValue = includePrefix ? `0o${octalValue}` : octalValue;
+                        octalMap.set(num, finalValue);
+                        // Create a unique placeholder that won't be quoted
+                        placeholderMap.set(num, `__OCTAL_${num}_PLACEHOLDER__`);
+                    }
+                }
+                else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                    collectOctalValues(value);
+                }
+                else if (Array.isArray(value)) {
+                    value.forEach(item => {
+                        if (typeof item === 'object' && item !== null) {
+                            collectOctalValues(item);
+                        }
+                    });
+                }
+            }
+        }
+    }
+    // First pass: collect all octal values
+    collectOctalValues(obj);
+    // Second pass: replace with placeholders
+    const transformedObj = JSON.parse(JSON.stringify(obj));
+    function replacePlaceholders(current) {
+        if (typeof current === 'object' && current !== null) {
+            for (const [key, value] of Object.entries(current)) {
+                if (fieldNames.includes(key) && typeof value === 'number' && Number.isInteger(value)) {
+                    const placeholder = placeholderMap.get(value);
+                    if (placeholder) {
+                        current[key] = placeholder;
+                    }
+                }
+                else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                    replacePlaceholders(value);
+                }
+                else if (Array.isArray(value)) {
+                    value.forEach(item => {
+                        if (typeof item === 'object' && item !== null) {
+                            replacePlaceholders(item);
+                        }
+                    });
+                }
+            }
+        }
+    }
+    replacePlaceholders(transformedObj);
+    // Generate YAML
+    let yamlContent = dump(transformedObj, {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true,
+        quotingType: '"',
+        forceQuotes: false
+    });
+    // Replace placeholders with actual octal values
+    placeholderMap.forEach((placeholder, originalValue) => {
+        const octalValue = octalMap.get(originalValue);
+        if (octalValue) {
+            // Replace both quoted and unquoted versions
+            yamlContent = yamlContent.replace(new RegExp(`["']?${placeholder}["']?`, 'g'), octalValue);
+        }
+    });
+    return yamlContent;
 }
 
 var execExports = requireExec();
@@ -33880,18 +33841,18 @@ var toolCacheExports = requireToolCache();
 class NFPMInstaller {
     static async install(version, skipInstall) {
         if (skipInstall) {
-            coreExports.info('Skipping NFPM installation as requested');
+            coreExports.info('Skipping nFPM installation as requested');
             return;
         }
         if (!version) {
-            coreExports.info('No NFPM version specified, assuming pre-installed');
+            coreExports.info('No nFPM version specified, assuming pre-installed');
             await this.verifyInstallation();
             return;
         }
-        coreExports.info('Installing NFPM...');
+        coreExports.info('Installing nFPM...');
         let nfpmPath = toolCacheExports.find('nfpm', version);
         if (!nfpmPath) {
-            coreExports.info(`NFPM version ${version} not found in cache, downloading...`);
+            coreExports.info(`nFPM version ${version} not found in cache, downloading...`);
             const actualVersion = await this.resolveVersion(version);
             const downloadUrl = this.getDownloadUrl(actualVersion);
             const downloadPath = await toolCacheExports.downloadTool(downloadUrl);
@@ -33905,17 +33866,17 @@ class NFPMInstaller {
     static async verifyInstallation() {
         try {
             await execExports.exec('nfpm', ['--version']);
-            coreExports.info('✅ NFPM is available and ready');
+            coreExports.info('✅ nFPM is available and ready');
         }
         catch (error) {
-            throw new Error('NFPM is not available. Please install NFPM or provide a version to install.');
+            throw new Error('nFPM is not available. Please install nFPM or provide a version to install.');
         }
     }
     static async resolveVersion(version) {
         if (version === 'latest') {
             const response = await fetch('https://api.github.com/repos/goreleaser/nfpm/releases/latest');
             if (!response.ok) {
-                throw new Error(`Failed to fetch latest NFPM release: ${response.statusText}`);
+                throw new Error(`Failed to fetch latest nFPM release: ${response.statusText}`);
             }
             const data = await response.json();
             const release = data;
@@ -33929,7 +33890,7 @@ class NFPMInstaller {
 }
 class PackageBuilder {
     static async buildPackages(configFile, target, formats) {
-        coreExports.info('Building packages...');
+        coreExports.startGroup('Building packages...');
         const pkgFormats = this.parseFormats(formats);
         const packages = [];
         for (const format of pkgFormats) {
@@ -33946,6 +33907,7 @@ class PackageBuilder {
             // Display package information
             await this.displayPackageInfo(packageInfo);
         }
+        coreExports.endGroup();
         return packages;
     }
     static parseFormats(formatsInput) {

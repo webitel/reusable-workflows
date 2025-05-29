@@ -19,22 +19,22 @@ export interface GitHubRelease {
 export class NFPMInstaller {
     public static async install(version: string, skipInstall: boolean): Promise<void> {
         if (skipInstall) {
-            core.info('Skipping NFPM installation as requested');
+            core.info('Skipping nFPM installation as requested');
             return;
         }
 
         if (!version) {
-            core.info('No NFPM version specified, assuming pre-installed');
+            core.info('No nFPM version specified, assuming pre-installed');
             await this.verifyInstallation();
             return;
         }
 
-        core.info('Installing NFPM...');
+        core.info('Installing nFPM...');
 
         let nfpmPath = tc.find('nfpm', version);
 
         if (!nfpmPath) {
-            core.info(`NFPM version ${version} not found in cache, downloading...`);
+            core.info(`nFPM version ${version} not found in cache, downloading...`);
 
             const actualVersion = await this.resolveVersion(version);
             const downloadUrl = this.getDownloadUrl(actualVersion);
@@ -53,9 +53,9 @@ export class NFPMInstaller {
     private static async verifyInstallation(): Promise<void> {
         try {
             await exec.exec('nfpm', ['--version']);
-            core.info('✅ NFPM is available and ready');
+            core.info('✅ nFPM is available and ready');
         } catch (error) {
-            throw new Error('NFPM is not available. Please install NFPM or provide a version to install.');
+            throw new Error('nFPM is not available. Please install nFPM or provide a version to install.');
         }
     }
 
@@ -64,7 +64,7 @@ export class NFPMInstaller {
             const response = await fetch('https://api.github.com/repos/goreleaser/nfpm/releases/latest');
 
             if (!response.ok) {
-                throw new Error(`Failed to fetch latest NFPM release: ${response.statusText}`);
+                throw new Error(`Failed to fetch latest nFPM release: ${response.statusText}`);
             }
 
             const data = await response.json();
@@ -82,7 +82,7 @@ export class NFPMInstaller {
 
 export class PackageBuilder {
     public static async buildPackages(configFile: string, target: string, formats: string): Promise<PackageInfo[]> {
-        core.info('Building packages...');
+        core.startGroup('Building packages...');
 
         const pkgFormats = this.parseFormats(formats);
         const packages: PackageInfo[] = [];
@@ -104,6 +104,8 @@ export class PackageBuilder {
             // Display package information
             await this.displayPackageInfo(packageInfo);
         }
+
+        core.endGroup()
 
         return packages;
     }

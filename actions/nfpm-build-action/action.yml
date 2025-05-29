@@ -126,7 +126,7 @@ inputs:
             dst: /usr/bin/app
             type: file
             mode: 0755
-          
+      
           - src: ./config.conf
             dst: /etc/app/config.conf
             type: config
@@ -135,6 +135,19 @@ inputs:
               owner: app
               group: app
       ```
+
+  contents-umask:
+    required: false
+    default: 0o002
+    description: |
+      Umask to be used on files without explicit mode set.
+      By default, nFPM will inherit the mode of the original file that's being added.
+      This may lead to issues if these files are checkout out in Git, for example,
+      as it won't keep all the permissions on fresh checkouts, or if the local
+      system has a problematic umask setting.
+      This setting allows to set the umask for all files that are added to the
+      package without a specific file_info.mode set.
+      Defaults will remove world-writable permissions (0o002).
 
   scripts:
     required: false

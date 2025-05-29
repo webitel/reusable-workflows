@@ -7,7 +7,7 @@ export interface ContentFile {
     dst: string;
     type?: 'file' | 'dir' | 'config' | 'symlink';
     file_info?: {
-        mode?: string; // FIXME: nFPM unmarshal config: cannot unmarshal !!str `0644` into fs.FileMode
+        mode?: number;
         owner?: string;
         group?: string;
     };
@@ -41,45 +41,35 @@ export interface NFPMConfig {
     conflicts?: string[];
     replaces?: string[];
     provides?: string[];
+    umask?: number;
     contents?: ContentFile[];
     scripts?: ScriptFiles;
 }
 
-// Create a custom YAML schema to preserve octal number format
-const customYamlType = new yaml.Type('tag:yaml.org,2002:int', {
-    kind: 'scalar',
-    resolve: function(data) {
-        return data !== null && (data === '0' || /^0[0-7]+$/.test(data) || /^[-+]?[1-9][0-9]*$/.test(data));
-    },
-    construct: function(data) {
-        // Just return the original string to preserve format
-        return data;
-    }
-});
-
-const CUSTOM_SCHEMA = yaml.DEFAULT_SCHEMA.extend({ implicit: [customYamlType] });
-
 export class ConfigGenerator {
     public static async generateNFPMConfig(configFile: string, contentFiles: ContentFile[]): Promise<void> {
-        core.info('Generating NFPM configuration...');
+        core.startGroup('Generating nFPM configuration...');
+        const config: NFPMConfig = {
+            name: core.getInput('package-name'),
+            description: core.getInput('package-description'),
+            vendor: core.getInput('vendor') || '',
+            maintainer: core.getInput('maintainer'),
+            homepage: core.getInput('homepage') || '',
+            license: core.getInput('license') || '',
 
-        // Get required inputs directly
-        const packageName = this.getRequiredInput('package-name');
-        const packageDescription = this.getRequiredInput('package-description');
-        const version = this.getRequiredInput('version');
-        const maintainer = this.getRequiredInput('maintainer');
+            arch: core.getInput('arch') || 'amd64',
+            platform: core.getInput('platform') || 'linux',
+            section: core.getInput('section') || 'default',
+            priority: core.getInput('priority') || 'optional',
 
-        // Get optional inputs with defaults
-        const arch = core.getInput('arch') || 'amd64';
-        const platform = core.getInput('platform') || 'linux';
-        const release = core.getInput('release') || '1';
-        const prerelease = core.getInput('prerelease') || '';
-        const version_metadata = core.getInput('version-metadata') || '';
-        const section = core.getInput('section') || 'default';
-        const priority = core.getInput('priority') || 'optional';
-        const vendor = core.getInput('vendor') || '';
-        const homepage = core.getInput('homepage') || '';
-        const license = core.getInput('license') || '';
+            version: core.getInput('version'),
+            release: core.getInput('release') || '1',
+            prerelease: core.getInput('prerelease') || '',
+            version_metadata: core.getInput('version-metadata') || '',
+
+            umask: parseInt(core.getInput('umask'), 8) || 0o002
+        };
+
         const depends = core.getInput('depends') || '';
         const recommends = core.getInput('recommends') || '';
         const suggests = core.getInput('suggests') || '';
@@ -87,42 +77,6 @@ export class ConfigGenerator {
         const replaces = core.getInput('replaces') || '';
         const provides = core.getInput('provides') || '';
         const scripts = core.getInput('scripts') || '';
-
-        const config: NFPMConfig = {
-            name: packageName,
-            arch: arch,
-            platform: platform,
-            version: version,
-            section: section,
-            priority: priority,
-            maintainer: maintainer,
-            description: packageDescription
-        };
-
-        // Add optional fields if provided
-        if (release && release !== '1') {
-            config.release = release;
-        }
-
-        if (prerelease) {
-            config.prerelease = prerelease
-        }
-
-        if (version_metadata) {
-            config.version_metadata = version_metadata
-        }
-
-        if (vendor) {
-            config.vendor = vendor;
-        }
-
-        if (homepage) {
-            config.homepage = homepage;
-        }
-
-        if (license) {
-            config.license = license;
-        }
 
         // Add dependency arrays if provided
         this.addDependencyArray(config, 'depends', depends);
@@ -132,37 +86,27 @@ export class ConfigGenerator {
         this.addDependencyArray(config, 'replaces', replaces);
         this.addDependencyArray(config, 'provides', provides);
 
-        // Add content files if provided
         if (contentFiles.length > 0) {
             config.contents = contentFiles;
         }
 
-        // Add scripts if provided
         if (scripts.trim()) {
             config.scripts = this.parseScripts(scripts);
         }
 
-        // Write configuration file
-        const yamlContent = yaml.dump(config, {
-            indent: 2,
-            lineWidth: -1,
-            noRefs: true,
-        });
+        // Use the string replacement method for reliable unquoted octal values
+        const yamlContent = objectToYamlWithOctalStringReplace(
+            config,
+            ['umask', 'mode'], // Fields to convert to octal
+            { includePrefix: true } // Include '0o' prefix
+        );
 
         await fs.writeFile(configFile, yamlContent);
 
-        core.info('Generated NFPM configuration:');
         core.info('==============================');
         core.info(yamlContent);
         core.info('==============================');
-    }
-
-    private static getRequiredInput(name: string): string {
-        const value = core.getInput(name);
-        if (!value) {
-            throw new Error(`Required input '${name}' is missing`);
-        }
-        return value;
+        core.endGroup()
     }
 
     private static addDependencyArray(config: NFPMConfig, key: keyof NFPMConfig, input: string): void {
@@ -202,88 +146,16 @@ export class ConfigGenerator {
 
 export class ContentFileParser {
     public static parse(contentsInput: string): ContentFile[] {
-        if (!contentsInput.trim()) {
+        const input = contentsInput.trim();
+        if (!input) {
             return [];
         }
 
-        const input = contentsInput.trim();
-
-        // Try to parse as YAML first
-        if (input.startsWith('-') || input.startsWith('contents:')) {
-            return this.parseYamlFormat(input);
-        }
-
-        // Parse as key-value format
-        return this.parseKeyValueFormat(input);
-    }
-
-    private static parseYamlFormat(yamlInput: string): ContentFile[] {
-        try {
-            let parsedYaml: any;
-
-            // Handle both array format and object format
-            // Use the custom schema to preserve number formats
-            if (yamlInput.startsWith('contents:')) {
-                parsedYaml = yaml.load(yamlInput, { schema: CUSTOM_SCHEMA }) as { contents: any[] };
-                parsedYaml = parsedYaml.contents;
-            } else {
-                parsedYaml = yaml.load(yamlInput, { schema: CUSTOM_SCHEMA }) as any[];
-            }
-
-            if (!Array.isArray(parsedYaml)) {
-                throw new Error('YAML contents must be an array');
-            }
-
-            const contentFiles = parsedYaml.map((file: any, index: number): ContentFile => {
-                if (!file.src || !file.dst) {
-                    throw new Error(`Content file at index ${index} must have 'src' and 'dst' properties`);
-                }
-
-                const type = file.type || 'file';
-                if (!['file', 'dir', 'config', 'symlink'].includes(type)) {
-                    throw new Error(`Invalid type "${type}" at index ${index}. Must be one of: file, dir, config, symlink`);
-                }
-
-                // Create the content file object
-                const contentFile: ContentFile = {
-                    src: file.src,
-                    dst: file.dst,
-                    type: type as 'file' | 'dir' | 'config' | 'symlink'
-                };
-
-                // Handle file_info
-                if (file.mode !== undefined || file.owner || file.group || file.file_info) {
-                    contentFile.file_info = {};
-
-                    // Preserve mode exactly as it was in the YAML (string or number)
-                    if (file.mode !== undefined) {
-                        contentFile.file_info.mode = file.mode;
-                    } else if (file.file_info?.mode !== undefined) {
-                        contentFile.file_info.mode = file.file_info.mode;
-                    }
-
-                    contentFile.file_info.owner = file.owner || file.file_info?.owner;
-                    contentFile.file_info.group = file.group || file.file_info?.group;
-                }
-
-                return contentFile;
-            });
-
-            core.info(`Parsed ${contentFiles.length} content files from YAML`);
-            this.logContentFiles(contentFiles);
-
-            return contentFiles;
-        } catch (error) {
-            throw new Error(`Failed to parse YAML contents: ${(error as Error).message}`);
-        }
-    }
-
-    private static parseKeyValueFormat(input: string): ContentFile[] {
         const contentFiles: ContentFile[] = [];
         const lines = input.split('\n').map(line => line.trim()).filter(line => line);
-
         for (const line of lines) {
             const file = this.parseKeyValueLine(line);
+
             contentFiles.push(file);
         }
 
@@ -320,7 +192,7 @@ export class ContentFileParser {
                     break;
                 case 'mode':
                     if (!file.file_info) file.file_info = {};
-                    file.file_info.mode = cleanValue.toString();
+                    file.file_info.mode = parseInt(cleanValue, 8);  // converts '0644' to 420
                     break;
                 case 'owner':
                     if (!file.file_info) file.file_info = {};
@@ -371,4 +243,89 @@ export class FileValidator {
             }
         }
     }
+}
+
+function objectToYamlWithOctalStringReplace(
+    obj: any,
+    fieldNames: string[],
+    options?: { includePrefix?: boolean }
+): string {
+    const { includePrefix = true } = options || {};
+
+    // Create a map of original values to octal strings
+    const octalMap = new Map<number, string>();
+    const placeholderMap = new Map<number, string>();
+
+    function collectOctalValues(current: any): void {
+        if (typeof current === 'object' && current !== null) {
+            for (const [key, value] of Object.entries(current)) {
+                if (fieldNames.includes(key) && typeof value === 'number' && Number.isInteger(value)) {
+                    const num = value as number;
+                    if (!octalMap.has(num)) {
+                        const octalValue = num.toString(8);
+                        const finalValue = includePrefix ? `0o${octalValue}` : octalValue;
+                        octalMap.set(num, finalValue);
+                        // Create a unique placeholder that won't be quoted
+                        placeholderMap.set(num, `__OCTAL_${num}_PLACEHOLDER__`);
+                    }
+                } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                    collectOctalValues(value);
+                } else if (Array.isArray(value)) {
+                    value.forEach(item => {
+                        if (typeof item === 'object' && item !== null) {
+                            collectOctalValues(item);
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    // First pass: collect all octal values
+    collectOctalValues(obj);
+
+    // Second pass: replace with placeholders
+    const transformedObj = JSON.parse(JSON.stringify(obj));
+    function replacePlaceholders(current: any): void {
+        if (typeof current === 'object' && current !== null) {
+            for (const [key, value] of Object.entries(current)) {
+                if (fieldNames.includes(key) && typeof value === 'number' && Number.isInteger(value)) {
+                    const placeholder = placeholderMap.get(value as number);
+                    if (placeholder) {
+                        current[key] = placeholder;
+                    }
+                } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                    replacePlaceholders(value);
+                } else if (Array.isArray(value)) {
+                    value.forEach(item => {
+                        if (typeof item === 'object' && item !== null) {
+                            replacePlaceholders(item);
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    replacePlaceholders(transformedObj);
+
+    // Generate YAML
+    let yamlContent = yaml.dump(transformedObj, {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true,
+        quotingType: '"',
+        forceQuotes: false
+    });
+
+    // Replace placeholders with actual octal values
+    placeholderMap.forEach((placeholder, originalValue) => {
+        const octalValue = octalMap.get(originalValue);
+        if (octalValue) {
+            // Replace both quoted and unquoted versions
+            yamlContent = yamlContent.replace(new RegExp(`["']?${placeholder}["']?`, 'g'), octalValue);
+        }
+    });
+
+    return yamlContent;
 }

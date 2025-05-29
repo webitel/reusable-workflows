@@ -108,27 +108,7 @@ This action provides numerous configuration options for package generation. For 
 
 ## Contents Format
 
-The `contents` input supports two formats:
-
-### YAML Format (Recommended)
-
-```yaml
-contents: |
-  - src: './build/my-app'
-    dst: '/usr/bin/my-app'
-    type: 'file'
-    mode: '0755'
-    owner: 'root'
-    group: 'root'
-  - src: './config/app.conf'
-    dst: '/etc/my-app/app.conf'
-    type: 'config'
-    mode: '0644'
-  - src: './data/'
-    dst: '/var/lib/my-app/'
-    type: 'dir'
-    mode: '0755'
-```
+The `contents` input supports format:
 
 ### Key-Value Format
 
