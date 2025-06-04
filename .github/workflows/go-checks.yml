@@ -12,6 +12,12 @@ on:
         default: false
         description: Download generated code
 
+      codeql:
+        type: boolean
+        required: false
+        default: true
+        description: Enable CodeQL scanning (private repository not supported)
+
 jobs:
   lint:
     name: Lint code
@@ -98,6 +104,7 @@ jobs:
   analyze:
     name: CodeQL analyze (${{ matrix.language }})
     runs-on: [ arc-runner-set ]
+    if: inputs.codeql
     permissions:
       security-events: write
 
