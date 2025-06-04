@@ -40,6 +40,24 @@ inputs:
     required: true
     description: Passphrase for the GPG private key
 
+  artifact-repository:
+    required: false
+    description: |
+      The repository owner and the repository name joined together by "/".
+      If artifact-github-token is specified, this is the repository that artifacts will be downloaded from.
+
+  artifact-actions-run-id:
+    required: false
+    description: |
+      The id of the workflow run where the desired download artifact was uploaded from.
+      If artifact-github-token is specified, this is the run that artifacts will be downloaded from.
+
+  artifact-github-token:
+    required: false
+    description: |
+      The GitHub token used to authenticate with the GitHub API.
+      This is required when downloading artifacts from a different repository or from a different workflow run.
+
 runs:
   using: composite
   steps:
@@ -47,6 +65,9 @@ runs:
       uses: actions/download-artifact@v4
       with:
         name: build-packages
+        repository: ${{ inputs.artifact-repository }}
+        run-id: ${{ inputs.artifact-actions-run-id }}
+        github-token: ${{ inputs.artifact-github-token }}
 
     - name: Import GPG key
       id: import-gpg-key

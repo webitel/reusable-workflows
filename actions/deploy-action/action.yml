@@ -7,20 +7,38 @@ inputs:
     description: Build artifact (e.g., .deb package)
 
   service:
-    description: Systemd service to restart
     required: false
+    description: Systemd service to restart
 
   host:
-    description: Remote host (IP or domain)
     required: true
+    description: Remote host (IP or domain)
 
   user:
-    description: SSH username
     required: true
+    description: SSH username
 
   private-key:
-    description: Private SSH key for authentication
     required: true
+    description: Private SSH key for authentication
+
+  artifact-repository:
+    required: false
+    description: |
+      The repository owner and the repository name joined together by "/".
+      If artifact-github-token is specified, this is the repository that artifacts will be downloaded from.
+
+  artifact-actions-run-id:
+    required: false
+    description: |
+      The id of the workflow run where the desired download artifact was uploaded from.
+      If artifact-github-token is specified, this is the run that artifacts will be downloaded from.
+
+  artifact-github-token:
+    required: false
+    description: |
+      The GitHub token used to authenticate with the GitHub API.
+      This is required when downloading artifacts from a different repository or from a different workflow run.
 
 runs:
   using: composite
@@ -34,6 +52,9 @@ runs:
       uses: actions/download-artifact@v4
       with:
         name: build-packages
+        repository: ${{ inputs.artifact-repository }}
+        run-id: ${{ inputs.artifact-actions-run-id }}
+        github-token: ${{ inputs.artifact-github-token }}
 
     - name: Copy build to remote host
       uses: appleboy/scp-action@v1.0.0

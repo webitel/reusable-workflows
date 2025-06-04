@@ -12,8 +12,14 @@ on:
       DEB_AWS_SECRET_ACCESS_KEY: { required: true }
       REPO_SIGNING_KEY: { required: true }
       REPO_SIGNING_KEY_PASSPHRASE: { required: true }
+      GH_PAT: { required: false }
 
     inputs:
+      triggered-branch:
+        type: string
+        required: false
+        default: ${{ github.ref_name }}
+
       tag:
         type: string
         required: false
@@ -54,6 +60,20 @@ on:
         type: string
         required: true
 
+      artifact-repository:
+        type: string
+        required: false
+        description: |
+          The repository owner and the repository name joined together by "/".
+          If artifact-github-token is specified, this is the repository that artifacts will be downloaded from.
+
+      artifact-actions-run-id:
+        type: string
+        required: false
+        description: |
+          The id of the workflow run where the desired download artifact was uploaded from.
+          If artifact-github-token is specified, this is the run that artifacts will be downloaded from.
+
 jobs:
   development:
     name: Development
@@ -68,6 +88,9 @@ jobs:
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_DEVELOPMENT }}
           user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
           private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
+          artifact-repository: ${{ inputs.artifact-repository }}
+          artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
+          artifact-github-token: ${{ secrets.GH_PAT }}
 
   testing:
     name: Testing
@@ -83,6 +106,9 @@ jobs:
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_TESTING }}
           user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
           private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
+          artifact-repository: ${{ inputs.artifact-repository }}
+          artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
+          artifact-github-token: ${{ secrets.GH_PAT }}
 
   check-latest:
     name: Check latest release
@@ -100,7 +126,7 @@ jobs:
       - name: For each git ref
         id: check
         run: |
-          current_branch="${GITHUB_REF#refs/heads/}"
+          current_branch="${{ inputs.triggered-branch }}"
           echo "Current branch: $current_branch"
 
           latest_branch=$(git ls-remote --heads origin 'v*.*' \
@@ -129,6 +155,9 @@ jobs:
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_STAGING }}
           user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
           private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
+          artifact-repository: ${{ inputs.artifact-repository }}
+          artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
+          artifact-github-token: ${{ secrets.GH_PAT }}
 
   repository:
     name: Publish .deb package
@@ -160,6 +189,9 @@ jobs:
           aws-secret-key: ${{ secrets.DEB_AWS_SECRET_ACCESS_KEY }}
           gpg-private-key: ${{ secrets.REPO_SIGNING_KEY }}
           gpg-passphrase: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}
+          artifact-repository: ${{ inputs.artifact-repository }}
+          artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
+          artifact-github-token: ${{ secrets.GH_PAT }}
 
   release:
     name: Release assets
@@ -177,6 +209,9 @@ jobs:
         with:
           name: build-packages
           path: dist
+          repository: ${{ inputs.artifact-repository }}
+          run-id: ${{ inputs.artifact-actions-run-id }}
+          github-token: ${{ secrets.GH_PAT }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
