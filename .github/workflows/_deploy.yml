@@ -126,6 +126,8 @@ jobs:
       - name: For each git ref
         id: check
         uses: webitel/reusable-workflows/actions/check-latest-action@main
+        with:
+          triggered-branch: ${{ inputs.triggered-branch }}
 
   staging:
     name: Staging
