@@ -125,21 +125,7 @@ jobs:
 
       - name: For each git ref
         id: check
-        run: |
-          current_branch="${{ inputs.triggered-branch }}"
-          echo "Current branch: $current_branch"
-
-          latest_branch=$(git ls-remote --heads origin 'v*.*' \
-            | grep -E 'refs/heads/v[0-9]+\.[0-9]+$' \
-            | awk '{print $2}' \
-            | sed 's|refs/heads/||' \
-            | sort -rV \
-            | head -n1)
-
-          echo "Latest release branch: $latest_branch"
-          if [[ "$current_branch" == "$latest_branch" ]]; then
-            echo "latest=true" >> "$GITHUB_OUTPUT"
-          fi
+        uses: webitel/reusable-workflows/actions/check-latest-action@main
 
   staging:
     name: Staging
