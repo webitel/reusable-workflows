@@ -1,0 +1,55 @@
+name: Prepare
+
+on:
+  workflow_call:
+    inputs:
+      development-branch:
+        type: string
+        required: false
+        default: main
+        description: Name of the development branch
+
+      triggered-branch:
+        type: string
+        required: false
+        default: ${{ github.ref_name }}
+        description: Name of the triggered branch
+
+      build-number:
+        type: string
+        required: false
+        default: ${{ github.run_number }}
+        description: Build number
+
+    outputs:
+      component:
+        value: ${{ jobs.version.outputs.component }}
+        description: Extracted component
+
+      version:
+        value: ${{ jobs.version.outputs.version }}
+        description: Extracted version
+
+      version-build:
+        value: ${{ jobs.version.outputs.version-build }}
+
+jobs:
+  version:
+    name: Version
+    uses: webitel/reusable-workflows/.github/workflows/_version.yml@main
+    with:
+      development-branch: ${{ inputs.development-branch }}
+      triggered-branch: ${{ inputs.triggered-branch }}
+      build-number: ${{ inputs.build-number }}
+
+  dependencies:
+    name: Dependencies
+    runs-on: [ arc-frontend-runner-set ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Download dependencies
+        run: npm install
