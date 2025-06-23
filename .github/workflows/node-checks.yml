@@ -1,0 +1,89 @@
+name: Checks
+
+on:
+  workflow_call:
+    inputs:
+      codeql:
+        type: boolean
+        required: false
+        default: true
+        description: Enable CodeQL scanning (private repository not supported)
+
+jobs:
+  lint:
+    name: Lint code
+    runs-on: [ arc-frontend-runner-set ]
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linters
+        uses: wearerequired/lint-action@v2
+        with:
+          eslint: true
+          eslint_dir: ./src
+          prettier: true
+          prettier_dir: ./src
+          tsc: true
+
+  test:
+    name: Unit testing
+    runs-on: [ arc-frontend-runner-set ]
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit:ci
+
+      - name: Test Summary
+        if: always()
+        uses: test-summary/action@v2.4
+        with:
+          paths: test-results/junit.xml
+
+  analyze:
+    name: CodeQL analyze (${{ matrix.language }})
+    runs-on: [ arc-runner-set ]
+    if: inputs.codeql
+    permissions:
+      security-events: write
+
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+          - language: javascript
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Initializes the CodeQL tools for scanning.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          # If you wish to specify custom queries, you can do so here or in a config file.
+          # By default, queries listed here will override any specified in a config file.
+          # Prefix the list here with "+" to use these queries and those in the config file.
+          # queries: ./path/to/local/query, your-org/your-repo/queries@main
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
