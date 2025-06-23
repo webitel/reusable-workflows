@@ -19,18 +19,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout shared-actions (for matcher)
+        uses: actions/checkout@v4
+        with:
+          repository: webitel/reusable-workflows
+          path: .shared-actions
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Register ESLint problem matcher
+        run: |
+          echo "::add-matcher::.shared-actions/.github/problem-matchers/node/eslint-compact.json"
+          echo "::add-matcher::.shared-actions/.github/problem-matchers/node/tsc.json"
 
       - name: Run ESLint / Prettier formatting
         run: npm run lint:ci
 
-      - name: Linter summary
-        if: always()
-        uses: mikepenz/action-junit-report@v5
-        with:
-          report_paths: test-results/eslint-results.xml
-          check_name: ESLint report
+      - name: Run Typecheck
+        run: npm run tsc
 
   test:
     name: Unit testing
