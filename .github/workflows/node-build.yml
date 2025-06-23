@@ -86,8 +86,7 @@ jobs:
           release: ${{ inputs.version-build }}
           prerelease: ${{ inputs.prerelease }}
           version-metadata: ${{ inputs.version-metadata }}
-          contents: |
-            src=build-source/ dst=/opt/www/crm
+          contents: ${{ inputs.package-contents }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
