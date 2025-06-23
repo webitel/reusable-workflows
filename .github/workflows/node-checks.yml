@@ -13,6 +13,7 @@ jobs:
   lint:
     name: Lint code
     runs-on: [ arc-frontend-runner-set ]
+    permissions: { checks: write, pull-requests: write }
     continue-on-error: true
     steps:
       - name: Checkout repository
@@ -21,14 +22,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run linters
-        uses: wearerequired/lint-action@v2
+      - name: Run ESLint / Prettier formatting
+        run: npm lint:ci
+
+      - name: Linter summary
+        if: always()
+        uses: mikepenz/action-junit-report@v5
         with:
-          eslint: true
-          eslint_dir: ./src
-          prettier: true
-          prettier_dir: ./src
-          tsc: true
+          report_paths: test-results/eslint-results.xml
+          check_name: ESLint report
 
   test:
     name: Unit testing
@@ -48,15 +50,13 @@ jobs:
         if: always()
         uses: test-summary/action@v2.4
         with:
-          paths: test-results/junit.xml
+          paths: test-results/tests.xml
 
   analyze:
     name: CodeQL analyze (${{ matrix.language }})
-    runs-on: [ arc-runner-set ]
+    runs-on: [ arc-frontend-runner-set ]
     if: inputs.codeql
-    permissions:
-      security-events: write
-
+    permissions: { checks: write, security-events: write }
     continue-on-error: true
     strategy:
       fail-fast: false
