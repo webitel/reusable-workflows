@@ -52,4 +52,4 @@ jobs:
           fetch-depth: 2
 
       - name: Download dependencies
-        run: npm install
+        run: npm ci
