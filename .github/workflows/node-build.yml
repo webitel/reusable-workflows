@@ -1,0 +1,97 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Extracted version to use for the build
+        required: true
+        type: string
+
+      version-build:
+        required: true
+        type: string
+
+      version-metadata:
+        type: string
+        required: false
+
+      prerelease:
+        type: string
+        required: false
+
+      package-name:
+        type: string
+        required: true
+
+      package-description:
+        type: string
+        required: true
+
+      package-contents:
+        type: string
+        required: true
+        description: |
+          Package contents specification in nFPM format.
+          See: https://github.com/webitel/reusable-workflows/tree/main/actions/nfpm-build-action#contents-format
+
+jobs:
+  compile:
+    name: Application
+    runs-on: [ arc-frontend-runner-set ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-source
+          compression-level: 9
+          include-hidden-files: true
+          path: |
+            dist
+
+  build:
+    name: Package
+    needs: [ compile ]
+    runs-on: [ arc-frontend-runner-set ]
+    steps:
+      - name: Download compiled file
+        uses: actions/download-artifact@v4
+        with:
+          name: build-source
+          path: build-source
+
+      - name: Build package
+        id: build
+        uses: webitel/reusable-workflows/actions/nfpm-build-action@main
+        with:
+          nfpm-version: latest
+          formats: deb
+          target: dist
+          maintainer: Webitel <support@webitel.com>
+          homepage: https://webitel.com
+          arch: amd64
+          platform: linux
+          package-name: ${{ inputs.package-name }}
+          package-description: ${{ inputs.package-description }}
+          version: ${{ inputs.version }}
+          release: ${{ inputs.version-build }}
+          prerelease: ${{ inputs.prerelease }}
+          version-metadata: ${{ inputs.version-metadata }}
+          contents: |
+            src=build-source/ dst=/opt/www/crm
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-packages
+          compression-level: 9
+          path: dist
