@@ -30,6 +30,7 @@ jobs:
 
       - name: Register ESLint problem matcher
         run: |
+          echo "::add-matcher::.shared-actions/.github/problem-matchers/node/eslint-stylish.json"
           echo "::add-matcher::.shared-actions/.github/problem-matchers/node/eslint-compact.json"
           echo "::add-matcher::.shared-actions/.github/problem-matchers/node/tsc.json"
 
