@@ -26,11 +26,6 @@ on:
         required: false
         default: false
 
-      generated-code-path:
-        type: string
-        required: false
-        default: ''
-
     outputs:
       component:
         value: ${{ jobs.version.outputs.component }}
@@ -46,8 +41,8 @@ on:
 jobs:
   version:
     name: Version
+    uses: webitel/reusable-workflows/common/.github/workflows/version.yml@main
     if: inputs.only-dependencies != 'true'
-    uses: webitel/reusable-workflows/.github/workflows/_version.yml@main
     with:
       development-branch: ${{ inputs.development-branch }}
       triggered-branch: ${{ inputs.triggered-branch }}
@@ -55,34 +50,15 @@ jobs:
 
   dependencies:
     name: Dependencies
-    runs-on: [ arc-runner-set ]
+    runs-on: [ arc-frontend-runner-set ]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
+
+      - name: Force-create pnpm-lock file
+        run: pnpm install --lockfile-only
 
       - name: Download dependencies
-        run: go mod download
-
-  generated:
-    name: Code
-    runs-on: [ arc-runner-set ]
-    if: inputs.generated-code-path != ''
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Generate code
-        run: go generate ./...
-
-      - name: Upload generated code
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-code
-          compression-level: 9
-          path: |
-            dummy-file-to-keep-directory-structure.txt
-            ${{ inputs.generated-code-path }}
+        run: pnpm fetch

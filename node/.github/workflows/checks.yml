@@ -30,9 +30,9 @@ jobs:
 
       - name: Register ESLint problem matcher
         run: |
-          echo "::add-matcher::.shared-actions/.github/problem-matchers/node/eslint-stylish.json"
-          echo "::add-matcher::.shared-actions/.github/problem-matchers/node/eslint-compact.json"
-          echo "::add-matcher::.shared-actions/.github/problem-matchers/node/tsc.json"
+          echo "::add-matcher::.shared-actions/node/.github/problem-matchers/eslint-stylish.json"
+          echo "::add-matcher::.shared-actions/node/.github/problem-matchers/eslint-compact.json"
+          echo "::add-matcher::.shared-actions/node/.github/problem-matchers/tsc.json"
 
       - name: Run ESLint / Prettier formatting
         run: npm run lint:ci
