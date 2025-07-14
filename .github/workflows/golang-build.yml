@@ -92,6 +92,16 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Checkout shared-actions (for matcher)
+        uses: actions/checkout@v4
+        with:
+          repository: webitel/reusable-workflows
+          path: .shared-actions
+
+      - name: Register Golang problem matcher
+        run: |
+          echo "::add-matcher::.shared-actions/.github/problem-matchers/golang/build.json"
+
       - name: Download generated code
         if: inputs.generated-code == 'true'
         uses: actions/download-artifact@v4
