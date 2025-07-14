@@ -21,7 +21,7 @@ on:
 jobs:
   lint:
     name: Lint code
-    runs-on: [ arc-runner-set ]
+    runs-on: [ arc-backend-runner-set ]
     continue-on-error: true
     steps:
       - name: Checkout repository
@@ -44,7 +44,7 @@ jobs:
 
   govulncheck:
     name: Vulnerabilities
-    runs-on: [ arc-runner-set ]
+    runs-on: [ arc-backend-runner-set ]
     permissions:
       security-events: write
 
@@ -78,7 +78,7 @@ jobs:
 
   test:
     name: Unit testing
-    runs-on: [ arc-runner-set ]
+    runs-on: [ arc-backend-runner-set ]
     continue-on-error: true
     steps:
       - name: Checkout repository
@@ -103,7 +103,7 @@ jobs:
 
   analyze:
     name: CodeQL analyze (${{ matrix.language }})
-    runs-on: [ arc-runner-set ]
+    runs-on: [ arc-backend-runner-set ]
     if: inputs.codeql
     permissions:
       security-events: write

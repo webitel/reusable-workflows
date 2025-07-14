@@ -61,7 +61,7 @@ jobs:
   build:
     name: Package
     needs: [ compile ]
-    runs-on: [ arc-frontend-runner-set ]
+    runs-on: [ arc-runner-set ]
     steps:
       - name: Download compiled file
         uses: actions/download-artifact@v4

@@ -55,7 +55,7 @@ jobs:
 
   dependencies:
     name: Dependencies
-    runs-on: [ arc-runner-set ]
+    runs-on: [ arc-backend-runner-set ]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -67,7 +67,7 @@ jobs:
 
   generated:
     name: Code
-    runs-on: [ arc-runner-set ]
+    runs-on: [ arc-backend-runner-set ]
     if: inputs.generated-code-path != ''
     steps:
       - name: Checkout repository

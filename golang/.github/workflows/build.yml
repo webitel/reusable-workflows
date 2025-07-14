@@ -80,7 +80,7 @@ on:
 jobs:
   compile:
     name: Application
-    runs-on: [ arc-runner-set ]
+    runs-on: [ arc-backend-runner-set ]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
