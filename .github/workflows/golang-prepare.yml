@@ -82,6 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: generated-code
+          retention-days: 1
           compression-level: 9
           path: |
             dummy-file-to-keep-directory-structure.txt

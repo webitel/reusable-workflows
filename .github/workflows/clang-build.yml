@@ -98,6 +98,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-source
+          retention-days: 1
           compression-level: 9
           path: |
             dummy-file-to-keep-directory-structure.txt
@@ -136,5 +137,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-packages
+          retention-days: 7
           compression-level: 9
           path: dist
