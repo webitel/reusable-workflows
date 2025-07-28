@@ -57,8 +57,5 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Force-create pnpm-lock file
-        run: pnpm install --lockfile-only
-
       - name: Download dependencies
-        run: pnpm fetch
+        run: npm ci --install-links --install-strategy shallow

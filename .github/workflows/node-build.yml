@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: pnpm install --offline
+        run: npm ci --install-links --install-strategy shallow
 
       - name: Build application
         run: npm run build
