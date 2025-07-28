@@ -78,6 +78,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies
+        if: matrix.language == 'javascript'
         run: npm ci --install-links --install-strategy shallow
 
       # Initializes the CodeQL tools for scanning.
