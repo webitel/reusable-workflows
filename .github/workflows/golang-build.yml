@@ -71,6 +71,11 @@ on:
           Package contents specification in nFPM format.
           See: https://github.com/webitel/reusable-workflows/tree/main/actions/nfpm-build-action#contents-format
 
+      package-depends:
+        type: string
+        required: false
+        description: Package dependencies (comma-separated)
+
       scripts:
         type: string
         required: false
@@ -264,6 +269,7 @@ jobs:
             ${{ inputs.package-contents }}
 
           scripts: ${{ inputs.scripts }}
+          depends: ${{ inputs.package-depends }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
