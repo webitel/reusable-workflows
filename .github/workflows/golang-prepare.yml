@@ -15,12 +15,6 @@ on:
         default: ${{ github.ref_name }}
         description: Name of the triggered branch
 
-      build-number:
-        type: string
-        required: false
-        default: ${{ github.run_number }}
-        description: Build number
-
       only-dependencies:
         type: string
         required: false
@@ -32,26 +26,18 @@ on:
         default: ''
 
     outputs:
-      component:
-        value: ${{ jobs.version.outputs.component }}
-        description: Extracted component
-
       version:
         value: ${{ jobs.version.outputs.version }}
         description: Extracted version
-
-      version-build:
-        value: ${{ jobs.version.outputs.version-build }}
 
 jobs:
   version:
     name: Version
     if: inputs.only-dependencies != 'true'
-    uses: webitel/reusable-workflows/.github/workflows/_version.yml@main
+    uses: ./.github/workflows/_version.yml
     with:
       development-branch: ${{ inputs.development-branch }}
       triggered-branch: ${{ inputs.triggered-branch }}
-      build-number: ${{ inputs.build-number }}
 
   dependencies:
     name: Dependencies

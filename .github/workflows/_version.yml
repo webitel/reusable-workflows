@@ -15,82 +15,79 @@ on:
         default: ${{ github.ref_name }}
         description: Name of the triggered branch
 
-      build-number:
-        type: string
-        required: false
-        default: ${{ github.run_number }}
-        description: Build number
-
     outputs:
-      component:
-        value: ${{ jobs.parse.outputs.component }}
-        description: Extracted component
-
       version:
         value: ${{ jobs.parse.outputs.version }}
         description: Extracted version
-
-      version-build:
-        value: ${{ jobs.parse.outputs.version-build }}
 
 jobs:
   parse:
     name: Parse
     runs-on: [ arc-runner-set ]
     outputs:
-      version: ${{ steps.parse-version.outputs.version }}
-      component: ${{ steps.parse-version.outputs.component }}
-      version-build: ${{ steps.parse-version.outputs.version-build }}
+      version: ${{ steps.version.outputs.version }}
 
     steps:
-      - name: Parse version
-        id: parse-version
-        env:
-          DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
-          TRIGGERED_BRANCH: ${{ inputs.triggered-branch }}
-          BUILD_NUMBER: ${{ inputs.build-number }}
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-        run: |
-          #!/bin/bash
-          set -e
+      - name: For each git ref find the latest release branch
+        id: latest-release-branch
+        uses: ./actions/check-latest-action
 
-          extract_development() {
-            local build_number="$1"
-            local component="dev"
-            local year=$(date +"%y")  
-            local month=$(date +"%m") 
-            local month_without_leading_zero=$(echo "$month" | sed 's/^0//')  # Remove leading zero
-            local version="v${year}.${month_without_leading_zero}"
-
-            echo "$version" "$component" "$component.$build_number"
-          }
-
-          extract_release() {
-            local branch="$1"
-            local build_number="$2"
-            local component="${branch}-releases"
-
-            # Remove 'v' prefix from branch name
-            local branch_version="${branch#v}"
-
-            # Split version by dot
-            local year=$(echo "$branch_version" | cut -d '.' -f 1)
-            local month=$(echo "$branch_version" | cut -d '.' -f 2)
-
-            # Remove leading zero from month part
-            local month_without_leading_zero=$(echo "$month" | sed 's/^0//')
-            local version="v${year}.${month_without_leading_zero}"
-
-            echo "$version" "$component" "$build_number"
-          }
-
-          read version component version_build < <(extract_development "$BUILD_NUMBER")
-          if [[ "$TRIGGERED_BRANCH" != "$DEVELOPMENT_BRANCH" ]]; then
-            read version component version_build < <(extract_release "$TRIGGERED_BRANCH" "$BUILD_NUMBER")
-          fi
-
-          echo "Extracted version: $version, component: $component, version-build: $version_build"
-
-          echo "version=${version}" >> $GITHUB_OUTPUT
-          echo "component=${component}" >> $GITHUB_OUTPUT
-          echo "version-build=${version_build}" >> $GITHUB_OUTPUT
+      - name: Get version
+        id: version
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const developmentBranch = '${{ inputs.development-branch }}';
+            const triggeredBranch = '${{ inputs.triggered-branch }}';
+            const latestReleaseBranch = '${{ steps.latest-release-branch.outputs.version }}';
+            
+            console.log(`📋 Development branch: ${developmentBranch}`);
+            console.log(`🔀 Triggered branch: ${triggeredBranch}`);
+            console.log(`🏷️ Latest release branch: ${latestReleaseBranch || 'none'}`);
+            
+            function parseVersion(versionString) {
+              if (!versionString) return null;
+            
+              const cleanVersion = versionString.replace(/^v/, '');
+              const parts = cleanVersion.split('.');
+              if (parts.length >= 2) {
+                const year = parts[0];
+                const month = parts[1].replace(/^0+/, '') || '0';
+                return `${year}.${month}`;
+              }
+            
+              return cleanVersion;
+            }
+            
+            function getCurrentDateVersion() {
+              const now = new Date();
+              const year = now.getFullYear().toString().slice(-2);
+              const month = (now.getMonth() + 1).toString();
+              return `${year}.${month}`;
+            }
+            
+            let version;
+            
+            if (triggeredBranch === developmentBranch) {
+              console.log('🔨 Processing development build');
+            
+              if (latestReleaseBranch) {
+                console.log(`📦 Using version from latest release branch: ${latestReleaseBranch}`);
+                version = parseVersion(latestReleaseBranch);
+              } else {
+                console.log('📅 No release branch found, using date-based version');
+                version = getCurrentDateVersion();
+              }
+            } else {
+              console.log('🚀 Processing release build');
+              console.log(`📦 Using version from triggered branch: ${triggeredBranch}`);
+              version = parseVersion(triggeredBranch);
+            }
+            
+            console.log(`✨ Final version: ${version}`);
+            core.setOutput('version', version);

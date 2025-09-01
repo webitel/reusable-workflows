@@ -1,0 +1,21 @@
+outputs:
+  version:
+    value: ${{ steps.check.outputs.version }}
+    description: Latest release branch
+
+runs:
+  using: composite
+  steps:
+    - name: For each git ref
+      id: check
+      shell: bash
+      run: |
+        latest_branch=$(git ls-remote --heads origin 'v*.*' \
+          | grep -E 'refs/heads/v[0-9]+\.[0-9]+$' \
+          | awk '{print $2}' \
+          | sed 's|refs/heads/||' \
+          | sort -rV \
+          | head -n1)
+
+        echo "Latest release branch: $latest_branch"
+        echo "version=$latest_branch" >> "$GITHUB_OUTPUT"
