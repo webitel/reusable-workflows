@@ -13,7 +13,7 @@ on:
       repository-environment:
         type: string
         required: false
-        default: acceptance
+        default: ""
         description: Linked environment for upload build to repository (eg. acceptance, v25.04-releases, ...).
 
       deb-package-pattern:
