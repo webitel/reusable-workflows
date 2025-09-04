@@ -8,9 +8,10 @@ on:
 
 jobs:
   trigger:
+    name: Trigger
     runs-on: [ arc-runner-set ]
     steps:
-      - name: Trigger
+      - name: Logs
         run: |
           echo "Triggering workflow"
           echo "See https://github.com/${{ github.repository }}/actions/workflows/workflow_run.yml for progress"

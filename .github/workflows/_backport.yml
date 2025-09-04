@@ -6,7 +6,8 @@ on:
   workflow_call:
 
 jobs:
-  backport:
+  perform:
+    name: Perform backport
     runs-on: [ arc-runner-set ]
     permissions:
       id-token: write
