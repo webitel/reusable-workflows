@@ -1,0 +1,77 @@
+name: Publish .deb package
+
+on:
+  workflow_call:
+    secrets:
+      DEB_AWS_ACCESS_KEY_ID: { required: true }
+      DEB_AWS_SECRET_ACCESS_KEY: { required: true }
+      REPO_SIGNING_KEY: { required: true }
+      REPO_SIGNING_KEY_PASSPHRASE: { required: true }
+      GH_PAT: { required: false }
+
+    inputs:
+      repository-environment:
+        type: string
+        required: false
+        default: acceptance
+        description: Linked environment for upload build to repository (eg. acceptance, v25.04-releases, ...).
+
+      deb-package-pattern:
+        type: string
+        required: true
+        description: A path pattern to artifact, that should be uploaded to environments and installed.
+
+      deb-component:
+        type: string
+        required: false
+        default: dev
+        description: Component of the APT repository.
+
+      deb-codename:
+        type: string
+        required: true
+        description: Nickname used for specific Debian releases.
+
+      deb-aws-bucket-name:
+        type: string
+        required: true
+
+      deb-aws-bucket-region:
+        type: string
+        required: true
+
+      artifact-repository:
+        type: string
+        required: false
+        description: |
+          The repository owner and the repository name joined together by "/".
+          If artifact-github-token is specified, this is the repository that artifacts will be downloaded from.
+
+      artifact-actions-run-id:
+        type: string
+        required: false
+        description: |
+          The id of the workflow run where the desired download artifact was uploaded from.
+          If artifact-github-token is specified, this is the run that artifacts will be downloaded from.
+
+jobs:
+  upload:
+    name: Upload
+    runs-on: [ arc-runner-set ]
+    environment: ${{ inputs.repository-environment }}
+    steps:
+      - name: Publish build
+        uses: ./actions/deb-s3-upload-action
+        with:
+          source: ${{ inputs.deb-package-pattern }}
+          component: ${{ inputs.deb-component }}
+          codename: ${{ inputs.deb-codename }}
+          aws-bucket-name: ${{ inputs.deb-aws-bucket-name }}
+          aws-bucket-region: ${{ inputs.deb-aws-bucket-region }}
+          aws-secret-id: ${{ secrets.DEB_AWS_ACCESS_KEY_ID }}
+          aws-secret-key: ${{ secrets.DEB_AWS_SECRET_ACCESS_KEY }}
+          gpg-private-key: ${{ secrets.REPO_SIGNING_KEY }}
+          gpg-passphrase: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}
+          artifact-repository: ${{ inputs.artifact-repository }}
+          artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
+          artifact-github-token: ${{ secrets.GH_PAT }}

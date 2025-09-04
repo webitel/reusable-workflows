@@ -135,7 +135,7 @@ jobs:
     environment: staging
     steps:
       - name: Deploy
-        uses: webitel/reusable-workflows/actions/deploy-action@main
+        uses: ./actions/deploy-action
         with:
           source: ${{ inputs.deb-package-pattern }}
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_STAGING }}
@@ -147,8 +147,8 @@ jobs:
 
   repository:
     name: Publish .deb package
-    runs-on: [ arc-runner-set ]
     needs: [ testing, check-latest, staging ]
+    uses: /.github/workflows/_publish-deb.yml
 
     # Run even if previous jobs fail or are canceled, but
     # do not run if the workflow was canceled.
@@ -161,23 +161,15 @@ jobs:
         (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.version == inputs.triggered-branch && needs.staging.result == 'success') ||
         (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.version != inputs.triggered-branch))
 
-    environment: ${{ inputs.repository-environment }}
-    steps:
-      - name: Publish build
-        uses: ./actions/deb-s3-upload-action
-        with:
-          source: ${{ inputs.deb-package-pattern }}
-          component: ${{ inputs.component }}
-          codename: ${{ inputs.deb-codename }}
-          aws-bucket-name: ${{ inputs.deb-aws-bucket-name }}
-          aws-bucket-region: ${{ inputs.deb-aws-bucket-region }}
-          aws-secret-id: ${{ secrets.DEB_AWS_ACCESS_KEY_ID }}
-          aws-secret-key: ${{ secrets.DEB_AWS_SECRET_ACCESS_KEY }}
-          gpg-private-key: ${{ secrets.REPO_SIGNING_KEY }}
-          gpg-passphrase: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}
-          artifact-repository: ${{ inputs.artifact-repository }}
-          artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
-          artifact-github-token: ${{ secrets.GH_PAT }}
+    with:
+      repository-environment: ${{ inputs.repository-environment }}
+      deb-package-pattern: ${{ inputs.deb-package-pattern }}
+      deb-component: ${{ inputs.component }}
+      deb-codename: ${{ inputs.deb-codename }}
+      deb-aws-bucket-name: ${{ inputs.deb-aws-bucket-name }}
+      deb-aws-bucket-region: ${{ inputs.deb-aws-bucket-region }}
+      artifact-repository: ${{ inputs.artifact-repository }}
+      artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
 
   release:
     name: Release assets
