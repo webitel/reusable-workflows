@@ -1,0 +1,60 @@
+name: Backport
+description: Backports a commit to the selected release branches
+
+inputs:
+  token:
+    required: true
+    description: GitHub token with access to all necessary repositories
+
+  labelsToAdd:
+    required: true
+    description: Comma delimited list of labels to add to the backport PRs
+
+  binary_release_tag:
+    required: false
+    default: "dev"
+    description:
+
+  path:
+    required: false
+    default: "."
+    description: ""
+
+  pr_label:
+    required: false
+    description: If specified, the backport will only be created for this label
+
+  pr_number:
+    required: false
+    description: The number of the PR to backport
+
+  repo_owner:
+    required: false
+    description: The owner of the repository the PR is in
+
+  repo_name:
+    required: false
+    description: The name of the repository the PR is in
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        RELEASE_TAG: ${{ inputs.binary_release_tag }}
+        INPUT_LABELS_TO_ADD: ${{ inputs.labels_to_add }}
+        DIR: ${{ inputs.path }}
+        PR_LABEL: ${{ inputs.pr_label }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+        REPO_OWNER: ${{ inputs.repo_owner }}
+        REPO_NAME: ${{ inputs.repo_name }}
+
+      run: |
+        set -e
+        # Download the action from the store
+        curl --fail -L -o /tmp/backport https://github.com/webitel/reusable-workflows/releases/download/${RELEASE_TAG}/backport
+        chmod +x /tmp/backport
+        cd $DIR
+        # Execute action
+        /tmp/backport
