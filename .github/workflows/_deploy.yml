@@ -161,6 +161,13 @@ jobs:
         (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.version == inputs.triggered-branch && needs.staging.result == 'success') ||
         (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.version != inputs.triggered-branch))
 
+    secrets:
+      DEB_AWS_ACCESS_KEY_ID: ${{ secrets.DEB_AWS_ACCESS_KEY_ID }}
+      DEB_AWS_SECRET_ACCESS_KEY: ${{ secrets.DEB_AWS_SECRET_ACCESS_KEY }}
+      REPO_SIGNING_KEY: ${{ secrets.REPO_SIGNING_KEY }}
+      REPO_SIGNING_KEY_PASSPHRASE: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+
     with:
       repository-environment: ${{ inputs.repository-environment }}
       deb-package-pattern: ${{ inputs.deb-package-pattern }}
