@@ -1,0 +1,131 @@
+name: Repo File Sync Action
+description: GitHub Action to Sync Files like Workflows Between Repositories.
+author: Webitel
+
+branding:
+  icon: git-pull-request
+  color: gray-dark
+
+inputs:
+  GH_PAT:
+    required: false
+    description: |
+      GitHub Personal Access Token to use to get repos and write secrets
+
+  GH_INSTALLATION_TOKEN:
+    required: false
+    description: |
+      GitHub App Installation Token to used to access repos
+
+  CONFIG_PATH:
+    required: false
+    description: |
+      The path for the sync configuration file
+
+  IS_FINE_GRAINED:
+    required: false
+    description: |
+      Label GH_PAT as a fine grained token
+
+  PR_LABELS:
+    required: false
+    description: |
+      Labels which will be added to the pull request. Defaults to sync. Set to false to turn off
+
+  PR_BODY:
+    required: false
+    description: |
+      Additional content to add in the PR description. Defaults to ''
+
+  ASSIGNEES:
+    required: false
+    description: |
+      Users to assign to the pull request. Defaults to none
+
+  REVIEWERS:
+    required: false
+    description: |
+      Users to request a review of the pull request from. Defaults to none
+
+  TEAM_REVIEWERS:
+    required: false
+    description: |
+      Teams to request a review of the pull request from. Defaults to none
+
+  COMMIT_PREFIX:
+    required: false
+    description: |
+      Prefix for commit message and pull request title. Defaults to 🔄
+
+  COMMIT_BODY:
+    required: false
+    description: |
+      Commit message body. Will be appended to commit message, separated by two line returns. Defaults to ''
+
+  COMMIT_EACH_FILE:
+    required: false
+    description: |
+      Commit each file seperately. Defaults to true
+
+  GIT_EMAIL:
+    required: false
+    description: |
+      The e-mail address used to commit the synced files. Defaults to the email of the GitHub PAT
+
+  GIT_USERNAME:
+    required: false
+    description: |
+      The username used to commit the synced files. Defaults to the username of the GitHub PAT
+
+  TMP_DIR:
+    required: false
+    description: |
+      The working directory where all sync operations will be done. Defaults to `tmp-${Date.now().toString()}`
+
+  DRY_RUN:
+    required: false
+    description: |
+      Run everything except for nothing will be updated. Defaults to false
+
+  SKIP_CLEANUP:
+    required: false
+    description: |
+      Skip removing the temporary directory (useful for debugging). Defaults to false
+
+  OVERWRITE_EXISTING_PR:
+    required: false
+    description: |
+      Overwrite any existing Sync PR with the new changes. Defaults to true
+
+  ORIGINAL_MESSAGE:
+    required: false
+    description: |
+      Re-use the original commit message for commits. Works only if the action is triggered by pushing one commit. Defaults to false
+
+  COMMIT_AS_PR_TITLE:
+    required: false
+    description: |
+      Re-use the commit message as PR title. Works only if ORIGINAL_MESSAGE is on and PR has one commit. Defaults to false
+
+  SKIP_PR:
+    required: false
+    description: |
+      Skips creating a Pull Request and pushes directly to the default branch. Defaults to false
+
+  BRANCH_PREFIX:
+    required: false
+    description: |
+      Specify a different prefix for the new branch in the target repo. Defaults to repo-sync/SOURCE_REPO_NAME
+
+  FORK:
+    required: false
+    description: |
+      Specify the user account that will be used in a fork and pull-request workflow. Defaults false.
+
+outputs:
+  pull_request_urls:
+    description: The URLs to the created Pull Requests as an array
+
+runs:
+  using: node20
+  main: dist/index.js
