@@ -8,13 +8,6 @@ on:
 
 jobs:
   trigger:
-
-    # Only run this job if the PR has been merged and has a label containing "backport v"
-    if: |
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      github.event.pull_request.merged == true &&
-      contains(join(github.event.pull_request.labels.*.name, ','), 'backport v')
-
     runs-on: [ arc-runner-set ]
     steps:
       - name: Trigger

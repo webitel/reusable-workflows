@@ -148,7 +148,7 @@ jobs:
   repository:
     name: Publish .deb package
     needs: [ testing, check-latest, staging ]
-    uses: /.github/workflows/_publish-deb.yml
+    uses: .github/workflows/_publish-deb.yml
 
     # Run even if previous jobs fail or are canceled, but
     # do not run if the workflow was canceled.
