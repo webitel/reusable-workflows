@@ -125,7 +125,7 @@ jobs:
 
       - name: For each git ref
         id: check
-        uses: webitel/reusable-workflows/actions/check-latest@check-latest-v1.0.0
+        uses: webitel/reusable-workflows/actions/check-latest@check-latest-v1.0.1
 
   staging:
     name: Staging
