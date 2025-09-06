@@ -10,12 +10,14 @@ runs:
       id: check
       shell: bash
       run: |
-        latest_branch=$(git ls-remote --heads origin 'v*.*' \
-          | grep -E 'refs/heads/v[0-9]+\.[0-9]+$' \
+        set +o pipefail
+        latest_branch=$(git ls-remote --heads origin "v*" \
           | awk '{print $2}' \
           | sed 's|refs/heads/||' \
+          | grep -E '^v[0-9]+\.[0-9]+$' \
           | sort -rV \
-          | head -n1)
+          | head -n1 || true)
+        set -o pipefail
 
         echo "Latest release branch: $latest_branch"
         echo "version=$latest_branch" >> "$GITHUB_OUTPUT"
