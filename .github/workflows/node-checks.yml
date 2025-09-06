@@ -24,6 +24,7 @@ jobs:
         with:
           repository: webitel/reusable-workflows
           path: .shared-actions
+          ref: aec883e1d4fab078f44cb76acb48ff970d84bad8
 
       - name: Install dependencies
         run: npm ci --install-links --install-strategy shallow

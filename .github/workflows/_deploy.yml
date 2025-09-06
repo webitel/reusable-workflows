@@ -82,7 +82,7 @@ jobs:
     environment: development
     steps:
       - name: Deploy
-        uses: ./actions/deploy-action
+        uses: webitel/reusable-workflows/actions/deploy@deploy-v1.0.0
         with:
           source: ${{ inputs.deb-package-pattern }}
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_DEVELOPMENT }}
@@ -100,7 +100,7 @@ jobs:
     environment: testing
     steps:
       - name: Deploy
-        uses: ./actions/deploy-action
+        uses: webitel/reusable-workflows/actions/deploy@deploy-v1.0.0
         with:
           source: ${{ inputs.deb-package-pattern }}
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_TESTING }}
@@ -125,7 +125,7 @@ jobs:
 
       - name: For each git ref
         id: check
-        uses: ./actions/check-latest-action
+        uses: webitel/reusable-workflows/actions/check-latest@check-latest-v1.0.0
 
   staging:
     name: Staging
@@ -135,7 +135,7 @@ jobs:
     environment: staging
     steps:
       - name: Deploy
-        uses: ./actions/deploy-action
+        uses: webitel/reusable-workflows/actions/deploy@deploy-v1.0.0
         with:
           source: ${{ inputs.deb-package-pattern }}
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_STAGING }}
@@ -148,7 +148,7 @@ jobs:
   repository:
     name: Publish .deb package
     needs: [ testing, check-latest, staging ]
-    uses: ./.github/workflows/_publish-deb.yml
+    uses: webitel/reusable-workflows/.github/workflows/_publish-deb.yml@aec883e1d4fab078f44cb76acb48ff970d84bad8
 
     # Run even if previous jobs fail or are canceled, but
     # do not run if the workflow was canceled.

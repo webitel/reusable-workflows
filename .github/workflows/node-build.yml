@@ -72,7 +72,7 @@ jobs:
 
       - name: Build package
         id: build
-        uses: ./actions/nfpm-build-action
+        uses: webitel/reusable-workflows/actions/nfpm-build@nfpm-build-v1.0.0
         with:
           nfpm-version: latest
           formats: deb

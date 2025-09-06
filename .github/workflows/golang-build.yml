@@ -102,6 +102,7 @@ jobs:
         with:
           repository: webitel/reusable-workflows
           path: .shared-actions
+          ref: aec883e1d4fab078f44cb76acb48ff970d84bad8
 
       - name: Register Golang problem matcher
         run: |
@@ -249,7 +250,7 @@ jobs:
 
       - name: Build package
         id: build
-        uses: ./actions/nfpm-build-action
+        uses: webitel/reusable-workflows/actions/nfpm-build@nfpm-build-v1.0.0
         with:
           nfpm-version: latest
           formats: deb

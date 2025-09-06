@@ -61,7 +61,7 @@ jobs:
     environment: ${{ inputs.repository-environment }}
     steps:
       - name: Publish build
-        uses: ./actions/deb-s3-upload-action
+        uses: webitel/reusable-workflows/actions/deb-s3-upload@deb-s3-upload-v1.0.0
         with:
           source: ${{ inputs.deb-package-pattern }}
           component: ${{ inputs.deb-component }}

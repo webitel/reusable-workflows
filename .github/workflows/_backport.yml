@@ -1,4 +1,4 @@
-# Runs the actual backport, after being triggered by the backport-trigger.yml workflow.
+# Runs the actual backport after being triggered by the backport-trigger.yml workflow.
 name: Backport (workflow)
 run-name: "Backport for ${{ github.event.workflow_run.head_branch }} #${{ github.event.workflow_run.run_number }}"
 
@@ -58,7 +58,7 @@ jobs:
           git config --local --add --bool push.autoSetupRemote true
 
       - name: Run backport
-        uses: ./actions/backport-action
+        uses: webitel/reusable-workflows/actions/backport@backport-v1.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
