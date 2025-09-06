@@ -148,7 +148,7 @@ jobs:
   repository:
     name: Publish .deb package
     needs: [ testing, check-latest, staging ]
-    uses: webitel/reusable-workflows/.github/workflows/_publish-deb.yml@aec883e1d4fab078f44cb76acb48ff970d84bad8
+    uses: webitel/reusable-workflows/.github/workflows/_publish-deb.yml@9597f2c85d2d5942120c204709f5abf239372624
 
     # Run even if previous jobs fail or are canceled, but
     # do not run if the workflow was canceled.
