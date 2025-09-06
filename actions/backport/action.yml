@@ -53,7 +53,7 @@ runs:
       run: |
         set -e
         # Download the action from the store
-        curl --fail -L -o /tmp/backport https://github.com/webitel/reusable-workflows/releases/download/${RELEASE_TAG}/backport
+        curl --fail -L -o /tmp/backport https://github.com/webitel/reusable-workflows/releases/download/backport-${RELEASE_TAG}/backport
         chmod +x /tmp/backport
         cd $DIR
         # Execute action
