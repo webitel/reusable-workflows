@@ -120590,6 +120590,30 @@ try {
       type: "boolean",
       default: true
     }),
+    NUNJUCKS_BLOCK_START: libExports.getInput({
+      key: "NUNJUCKS_BLOCK_START",
+      disableable: true
+    }),
+    NUNJUCKS_BLOCK_END: libExports.getInput({
+      key: "NUNJUCKS_BLOCK_END",
+      disableable: true
+    }),
+    NUNJUCKS_VARIABLE_START: libExports.getInput({
+      key: "NUNJUCKS_VARIABLE_START",
+      disableable: true
+    }),
+    NUNJUCKS_VARIABLE_END: libExports.getInput({
+      key: "NUNJUCKS_VARIABLE_END",
+      disableable: true
+    }),
+    NUNJUCKS_COMMENT_START: libExports.getInput({
+      key: "NUNJUCKS_COMMENT_START",
+      disableable: true
+    }),
+    NUNJUCKS_COMMENT_END: libExports.getInput({
+      key: "NUNJUCKS_COMMENT_END",
+      disableable: true
+    }),
     GITHUB_REPOSITORY: libExports.getInput({
       key: "GITHUB_REPOSITORY",
       required: true
@@ -128465,6 +128489,25 @@ var nunjucksExports = requireNunjucks();
 var nunjucks = /*@__PURE__*/getDefaultExportFromCjs(nunjucksExports);
 
 nunjucks.configure({ autoescape: true, trimBlocks: true, lstripBlocks: true });
+function setNunjucksTags(tags) {
+  if (!tags) return;
+  try {
+    nunjucks.configure({
+      autoescape: true,
+      trimBlocks: true,
+      lstripBlocks: true,
+      tags: {
+        blockStart: tags.blockStart || "{%",
+        blockEnd: tags.blockEnd || "%}",
+        variableStart: tags.variableStart || "{{",
+        variableEnd: tags.variableEnd || "}}",
+        commentStart: tags.commentStart || "{#",
+        commentEnd: tags.commentEnd || "#}"
+      }
+    });
+  } catch (e) {
+  }
+}
 async function forEach(array, callback) {
   for (let index = 0; index < array.length; index++) {
     await callback(array[index], index, array);
@@ -129061,9 +129104,26 @@ const {
   COMMIT_AS_PR_TITLE,
   FORK,
   REVIEWERS,
-  TEAM_REVIEWERS
+  TEAM_REVIEWERS,
+  NUNJUCKS_BLOCK_START,
+  NUNJUCKS_BLOCK_END,
+  NUNJUCKS_VARIABLE_START,
+  NUNJUCKS_VARIABLE_END,
+  NUNJUCKS_COMMENT_START,
+  NUNJUCKS_COMMENT_END
 } = config;
 async function run() {
+  if (NUNJUCKS_BLOCK_START || NUNJUCKS_BLOCK_END || NUNJUCKS_VARIABLE_START || NUNJUCKS_VARIABLE_END || NUNJUCKS_COMMENT_START || NUNJUCKS_COMMENT_END) {
+    setNunjucksTags({
+      blockStart: NUNJUCKS_BLOCK_START,
+      blockEnd: NUNJUCKS_BLOCK_END,
+      variableStart: NUNJUCKS_VARIABLE_START,
+      variableEnd: NUNJUCKS_VARIABLE_END,
+      commentStart: NUNJUCKS_COMMENT_START,
+      commentEnd: NUNJUCKS_COMMENT_END
+    });
+    coreExports.info("Configured custom Nunjucks tags");
+  }
   const git = new Git();
   const repos = await parseConfig();
   const prUrls = [];

@@ -2,7 +2,7 @@ import * as core from '@actions/core'
 import * as fs from 'fs'
 
 import Git from './git.js'
-import { forEach, dedent, addTrailingSlash, pathIsDirectory, copy, remove, arrayEquals } from './helpers.js'
+import { forEach, dedent, addTrailingSlash, pathIsDirectory, copy, remove, arrayEquals, setNunjucksTags } from './helpers.js'
 
 import { parseConfig, default as config } from './config.js'
 
@@ -20,10 +20,28 @@ const {
     COMMIT_AS_PR_TITLE,
     FORK,
     REVIEWERS,
-    TEAM_REVIEWERS
+    TEAM_REVIEWERS,
+    NUNJUCKS_BLOCK_START,
+    NUNJUCKS_BLOCK_END,
+    NUNJUCKS_VARIABLE_START,
+    NUNJUCKS_VARIABLE_END,
+    NUNJUCKS_COMMENT_START,
+    NUNJUCKS_COMMENT_END
 } = config
 
 async function run() {
+    // Configure Nunjucks tags if provided via inputs
+    if (NUNJUCKS_BLOCK_START || NUNJUCKS_BLOCK_END || NUNJUCKS_VARIABLE_START || NUNJUCKS_VARIABLE_END || NUNJUCKS_COMMENT_START || NUNJUCKS_COMMENT_END) {
+        setNunjucksTags({
+            blockStart: NUNJUCKS_BLOCK_START,
+            blockEnd: NUNJUCKS_BLOCK_END,
+            variableStart: NUNJUCKS_VARIABLE_START,
+            variableEnd: NUNJUCKS_VARIABLE_END,
+            commentStart: NUNJUCKS_COMMENT_START,
+            commentEnd: NUNJUCKS_COMMENT_END
+        })
+        core.info('Configured custom Nunjucks tags')
+    }
     // Reuse octokit for each repo
     const git = new Git()
 

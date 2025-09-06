@@ -100,6 +100,30 @@ try {
             type: 'boolean',
             default: true
         }),
+        NUNJUCKS_BLOCK_START: getInput({
+            key: 'NUNJUCKS_BLOCK_START',
+            disableable: true
+        }),
+        NUNJUCKS_BLOCK_END: getInput({
+            key: 'NUNJUCKS_BLOCK_END',
+            disableable: true
+        }),
+        NUNJUCKS_VARIABLE_START: getInput({
+            key: 'NUNJUCKS_VARIABLE_START',
+            disableable: true
+        }),
+        NUNJUCKS_VARIABLE_END: getInput({
+            key: 'NUNJUCKS_VARIABLE_END',
+            disableable: true
+        }),
+        NUNJUCKS_COMMENT_START: getInput({
+            key: 'NUNJUCKS_COMMENT_START',
+            disableable: true
+        }),
+        NUNJUCKS_COMMENT_END: getInput({
+            key: 'NUNJUCKS_COMMENT_END',
+            disableable: true
+        }),
         GITHUB_REPOSITORY: getInput({
             key: 'GITHUB_REPOSITORY',
             required: true

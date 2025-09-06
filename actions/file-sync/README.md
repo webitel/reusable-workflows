@@ -125,31 +125,37 @@ This feature relies on standard YAML anchor/alias behavior and is supported by t
 
 Here are all the inputs [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) takes:
 
-| Key                     | Value                                                                                                                                          | Required                                         | Default                        |
-|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|--------------------------------|
-| `GH_PAT`                | Your [Personal Access token](https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/creating-a-personal-access-token) | **`GH_PAT` or `GH_INSTALLATION_TOKEN` required** | N/A                            |
-| `GH_INSTALLATION_TOKEN` | Token from a GitHub App installation                                                                                                           | **`GH_PAT` or `GH_INSTALLATION_TOKEN` required** | N/A                            |
-| `CONFIG_PATH`           | Path to the sync configuration file                                                                                                            | **No**                                           | .github/sync.yml               |
-| `IS_FINE_GRAINED`       | Labels the GH_PAT as a fine grained token                                                                                                      | **No**                                           | false                          |
-| `PR_LABELS`             | Labels which will be added to the pull request. Set to false to turn off                                                                       | **No**                                           | sync                           |
-| `ASSIGNEES`             | Users to assign to the pull request                                                                                                            | **No**                                           | N/A                            |
-| `REVIEWERS`             | Users to request a review of the pull request from                                                                                             | **No**                                           | N/A                            |
-| `TEAM_REVIEWERS`        | Teams to request a review of the pull request from                                                                                             | **No**                                           | N/A                            |
-| `COMMIT_PREFIX`         | Prefix for commit message and pull request title                                                                                               | **No**                                           | 🔄                             |
-| `COMMIT_BODY`           | Commit message body. Will be appended to commit message, separated by two line returns.                                                        | **No**                                           | ''                             |
-| `PR_BODY`               | Additional content to add in the PR description.                                                                                               | **No**                                           | ''                             |
-| `ORIGINAL_MESSAGE`      | Use original commit message instead. Only works if the file(s) were changed and the action was triggered by pushing a single commit.           | **No**                                           | false                          |
-| `COMMIT_AS_PR_TITLE`    | Use first line of the commit message as PR title. Only works if `ORIGINAL_MESSAGE` is `true` and working.                                      | **No**                                           | false                          |
-| `COMMIT_EACH_FILE`      | Commit each file seperately                                                                                                                    | **No**                                           | true                           |
-| `GIT_EMAIL`             | The e-mail address used to commit the synced files                                                                                             | **Only when using installation token**           | the email of the PAT used      |
-| `GIT_USERNAME`          | The username used to commit the synced files                                                                                                   | **Only when using installation token**           | the username of the PAT used   |
-| `OVERWRITE_EXISTING_PR` | Overwrite any existing Sync PR with the new changes                                                                                            | **No**                                           | true                           |
-| `BRANCH_PREFIX`         | Specify a different prefix for the new branch in the target repo                                                                               | **No**                                           | repo-sync/SOURCE_REPO_NAME     |
-| `TMP_DIR`               | The working directory where all git operations will be done                                                                                    | **No**                                           | tmp-${ Date.now().toString() } |
-| `DRY_RUN`               | Run everything except that nothing will be pushed                                                                                              | **No**                                           | false                          |
-| `SKIP_CLEANUP`          | Skips removing the temporary directory. Useful for debugging                                                                                   | **No**                                           | false                          |
-| `SKIP_PR`               | Skips creating a Pull Request and pushes directly to the default branch                                                                        | **No**                                           | false                          |
-| `FORK`                  | A Github account username. Changes will be pushed to a fork of target repos on this account.                                                   | **No**                                           | false                          |
+| Key                       | Value                                                                                                                                          | Required                                         | Default                        |
+|---------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|--------------------------------|
+| `GH_PAT`                  | Your [Personal Access token](https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/creating-a-personal-access-token) | **`GH_PAT` or `GH_INSTALLATION_TOKEN` required** | N/A                            |
+| `GH_INSTALLATION_TOKEN`   | Token from a GitHub App installation                                                                                                           | **`GH_PAT` or `GH_INSTALLATION_TOKEN` required** | N/A                            |
+| `CONFIG_PATH`             | Path to the sync configuration file                                                                                                            | **No**                                           | .github/sync.yml               |
+| `IS_FINE_GRAINED`         | Labels the GH_PAT as a fine grained token                                                                                                      | **No**                                           | false                          |
+| `PR_LABELS`               | Labels which will be added to the pull request. Set to false to turn off                                                                       | **No**                                           | sync                           |
+| `ASSIGNEES`               | Users to assign to the pull request                                                                                                            | **No**                                           | N/A                            |
+| `REVIEWERS`               | Users to request a review of the pull request from                                                                                             | **No**                                           | N/A                            |
+| `TEAM_REVIEWERS`          | Teams to request a review of the pull request from                                                                                             | **No**                                           | N/A                            |
+| `COMMIT_PREFIX`           | Prefix for commit message and pull request title                                                                                               | **No**                                           | 🔄                             |
+| `COMMIT_BODY`             | Commit message body. Will be appended to commit message, separated by two line returns.                                                        | **No**                                           | ''                             |
+| `PR_BODY`                 | Additional content to add in the PR description.                                                                                               | **No**                                           | ''                             |
+| `ORIGINAL_MESSAGE`        | Use original commit message instead. Only works if the file(s) were changed and the action was triggered by pushing a single commit.           | **No**                                           | false                          |
+| `COMMIT_AS_PR_TITLE`      | Use first line of the commit message as PR title. Only works if `ORIGINAL_MESSAGE` is `true` and working.                                      | **No**                                           | false                          |
+| `COMMIT_EACH_FILE`        | Commit each file seperately                                                                                                                    | **No**                                           | true                           |
+| `GIT_EMAIL`               | The e-mail address used to commit the synced files                                                                                             | **Only when using installation token**           | the email of the PAT used      |
+| `GIT_USERNAME`            | The username used to commit the synced files                                                                                                   | **Only when using installation token**           | the username of the PAT used   |
+| `OVERWRITE_EXISTING_PR`   | Overwrite any existing Sync PR with the new changes                                                                                            | **No**                                           | true                           |
+| `BRANCH_PREFIX`           | Specify a different prefix for the new branch in the target repo                                                                               | **No**                                           | repo-sync/SOURCE_REPO_NAME     |
+| `TMP_DIR`                 | The working directory where all git operations will be done                                                                                    | **No**                                           | tmp-${ Date.now().toString() } |
+| `DRY_RUN`                 | Run everything except that nothing will be pushed                                                                                              | **No**                                           | false                          |
+| `SKIP_CLEANUP`            | Skips removing the temporary directory. Useful for debugging                                                                                   | **No**                                           | false                          |
+| `SKIP_PR`                 | Skips creating a Pull Request and pushes directly to the default branch                                                                        | **No**                                           | false                          |
+| `FORK`                    | A Github account username. Changes will be pushed to a fork of target repos on this account.                                                   | **No**                                           | false                          |
+| `NUNJUCKS_BLOCK_START`    | Custom Nunjucks block start tag (e.g., `((*`).                                                                                                 | **No**                                           | `{%`                           |
+| `NUNJUCKS_BLOCK_END`      | Custom Nunjucks block end tag (e.g., `*))`).                                                                                                   | **No**                                           | `%}`                           |
+| `NUNJUCKS_VARIABLE_START` | Custom Nunjucks variable start tag (e.g., `(((`).                                                                                              | **No**                                           | `{{`                           |
+| `NUNJUCKS_VARIABLE_END`   | Custom Nunjucks variable end tag (e.g., `)))`).                                                                                                | **No**                                           | `}}`                           |
+| `NUNJUCKS_COMMENT_START`  | Custom Nunjucks comment start tag (e.g., `((=`).                                                                                               | **No**                                           | `{#`                           |
+| `NUNJUCKS_COMMENT_END`    | Custom Nunjucks comment end tag (e.g., `=))`).                                                                                                 | **No**                                           | `#}`                           |
 
 ### Outputs
 
@@ -229,6 +235,25 @@ user/repo:
 ```
 
 ### Using templates
+
+#### Custom Nunjucks delimiters (optional)
+If your source files contain characters that conflict with the default Nunjucks tags, you can customize the delimiter syntax via inputs. Set any of the following inputs in the workflow step that uses the action:
+
+```yml
+- name: Run GitHub File Sync
+  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  with:
+    GH_PAT: ${{ secrets.GH_PAT }}
+    # Example: use ((* *)) for blocks, ((( ))) for variables, ((= =)) for comments
+    NUNJUCKS_BLOCK_START: '((*'
+    NUNJUCKS_BLOCK_END: '*))'
+    NUNJUCKS_VARIABLE_START: '((('
+    NUNJUCKS_VARIABLE_END: ')))'
+    NUNJUCKS_COMMENT_START: '((='
+    NUNJUCKS_COMMENT_END: '=))'
+```
+
+Defaults (when not provided) remain the standard Nunjucks tags: `{% %}` for blocks, `{{ }}` for variables, and `{# #}` for comments.
 
 You can render templates before syncing by using the [Jinja](https://jinja.palletsprojects.com/)-style template syntax. It will be compiled using [Nunjucks](https://mozilla.github.io/nunjucks/) and the output written to the specific file(s) or folder(s).
 

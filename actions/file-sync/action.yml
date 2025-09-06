@@ -122,6 +122,36 @@ inputs:
     description: |
       Specify the user account that will be used in a fork and pull-request workflow. Defaults false.
 
+  NUNJUCKS_BLOCK_START:
+    required: false
+    description: |
+      Custom Nunjucks block start tag. Example: ((*
+
+  NUNJUCKS_BLOCK_END:
+    required: false
+    description: |
+      Custom Nunjucks block end tag. Example: *))
+
+  NUNJUCKS_VARIABLE_START:
+    required: false
+    description: |
+      Custom Nunjucks variable start tag. Example: (((
+
+  NUNJUCKS_VARIABLE_END:
+    required: false
+    description: |
+      Custom Nunjucks variable end tag. Example: )))
+
+  NUNJUCKS_COMMENT_START:
+    required: false
+    description: |
+      Custom Nunjucks comment start tag. Example: ((=
+
+  NUNJUCKS_COMMENT_END:
+    required: false
+    description: |
+      Custom Nunjucks comment end tag. Example: =))
+
 outputs:
   pull_request_urls:
     description: The URLs to the created Pull Requests as an array

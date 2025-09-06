@@ -5,7 +5,30 @@ import * as core from '@actions/core'
 import * as path from 'path'
 import nunjucks from 'nunjucks'
 
+// Configure Nunjucks with defaults; tags can be overridden via setNunjucksTags
 nunjucks.configure({ autoescape: true, trimBlocks: true, lstripBlocks: true })
+
+export function setNunjucksTags(tags) {
+    if (!tags) return
+    // tags: { blockStart, blockEnd, variableStart, variableEnd, commentStart, commentEnd }
+    try {
+        nunjucks.configure({
+            autoescape: true,
+            trimBlocks: true,
+            lstripBlocks: true,
+            tags: {
+                blockStart: tags.blockStart || '{%',
+                blockEnd: tags.blockEnd || '%}',
+                variableStart: tags.variableStart || '{{',
+                variableEnd: tags.variableEnd || '}}',
+                commentStart: tags.commentStart || '{#',
+                commentEnd: tags.commentEnd || '#}'
+            }
+        })
+    } catch (e) {
+        // Fallback to default configuration on error
+    }
+}
 
 // From https://github.com/toniov/p-iteration/blob/master/lib/static-methods.js - MIT © Antonio V
 export async function forEach(array, callback) {
