@@ -6,33 +6,33 @@ inputs:
     required: true
     description: GitHub token with access to all necessary repositories
 
-  labelsToAdd:
+  labels-to-add:
     required: true
     description: Comma delimited list of labels to add to the backport PRs
 
-  binary_release_tag:
+  binary-release-tag:
     required: false
     default: "dev"
-    description:
+    description: ""
 
   path:
     required: false
     default: "."
     description: ""
 
-  pr_label:
+  pr-label:
     required: false
     description: If specified, the backport will only be created for this label
 
-  pr_number:
+  pr-number:
     required: false
     description: The number of the PR to backport
 
-  repo_owner:
+  repo-owner:
     required: false
     description: The owner of the repository the PR is in
 
-  repo_name:
+  repo-name:
     required: false
     description: The name of the repository the PR is in
 
@@ -42,13 +42,13 @@ runs:
     - shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
-        RELEASE_TAG: ${{ inputs.binary_release_tag }}
-        INPUT_LABELS_TO_ADD: ${{ inputs.labels_to_add }}
+        RELEASE_TAG: ${{ inputs.binary-release-tag }}
+        INPUT_LABELS_TO_ADD: ${{ inputs.labels-to-add }}
         DIR: ${{ inputs.path }}
-        PR_LABEL: ${{ inputs.pr_label }}
-        PR_NUMBER: ${{ inputs.pr_number }}
-        REPO_OWNER: ${{ inputs.repo_owner }}
-        REPO_NAME: ${{ inputs.repo_name }}
+        PR_LABEL: ${{ inputs.pr-label }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        REPO_OWNER: ${{ inputs.repo-owner }}
+        REPO_NAME: ${{ inputs.repo-name }}
 
       run: |
         set -e

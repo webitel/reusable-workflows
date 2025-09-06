@@ -29,7 +29,7 @@ func GetReleaseBranches(ctx context.Context, log *slog.Logger, client BranchClie
 	for {
 		log.Debug("listing branches", "page", page, "count", count)
 		b, r, err := client.ListBranches(ctx, owner, repo, &github.BranchListOptions{
-			Protected: github.Bool(true),
+			Protected: github.Bool(false), // TODO: change this when we have protected branches
 			ListOptions: github.ListOptions{
 				Page:    page,
 				PerPage: count,

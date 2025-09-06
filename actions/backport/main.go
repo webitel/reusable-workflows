@@ -87,7 +87,7 @@ func main() {
 			return
 		}
 
-		log.Error("error getting backport targets", "error", err)
+		log.Error("error getting backport targets", "error", err, "branches", branches)
 		panic(err)
 	}
 
