@@ -7,6 +7,14 @@ inputs:
     required: true
     description: PEM-encoded private key for the GitHub App.
 
+  owner:
+    required: false
+    description: The owner of the GitHub App installation (defaults to current repository owner)
+
+  repositories:
+    required: false
+    description: Comma or newline-separated list of repositories to install the GitHub App on (defaults to current repository if owner is unset)
+
 outputs:
   token:
     value: ${{ steps.app-token.outputs.token }}
@@ -29,6 +37,8 @@ runs:
       with:
         app-id: ${{ inputs.app-id }}
         private-key: ${{ inputs.private-key }}
+        owner: ${{ inputs.owner }}
+        repositories: ${{ inputs.repositories }}
 
     - name: Get GitHub App User ID
       id: get-user-id
