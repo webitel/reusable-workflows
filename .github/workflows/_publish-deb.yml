@@ -7,7 +7,7 @@ on:
       DEB_AWS_SECRET_ACCESS_KEY: { required: true }
       REPO_SIGNING_KEY: { required: true }
       REPO_SIGNING_KEY_PASSPHRASE: { required: true }
-      GH_PAT: { required: false }
+      DELIVERY_BOT_APP_PEM: { required: false }
 
     inputs:
       repository-environment:
@@ -40,12 +40,22 @@ on:
         type: string
         required: true
 
-      artifact-repository:
+      github-app-id:
         type: string
         required: false
         description: |
-          The repository owner and the repository name joined together by "/".
-          If artifact-github-token is specified, this is the repository that artifacts will be downloaded from.
+          Numeric ID of the GitHub App used to generate the installation token.
+          This is required when downloading artifacts from a different repository or from a different workflow run
+
+      artifact-repository-owner:
+        type: string
+        required: false
+        description: The owner of the GitHub App installation (defaults to current repository owner)
+
+      artifact-repository:
+        type: string
+        required: false
+        description: The repository name joined that artifacts will be downloaded from
 
       artifact-actions-run-id:
         type: string
@@ -61,7 +71,7 @@ jobs:
     environment: ${{ inputs.repository-environment }}
     steps:
       - name: Publish build
-        uses: webitel/reusable-workflows/actions/deb-s3-upload@deb-s3-upload-v1.0.0
+        uses: webitel/reusable-workflows/actions/deb-s3-upload@deb-s3-upload-v1.0.1
         with:
           source: ${{ inputs.deb-package-pattern }}
           component: ${{ inputs.deb-component }}
@@ -72,6 +82,8 @@ jobs:
           aws-secret-key: ${{ secrets.DEB_AWS_SECRET_ACCESS_KEY }}
           gpg-private-key: ${{ secrets.REPO_SIGNING_KEY }}
           gpg-passphrase: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}
+          github-app-id: ${{ inputs.github-app-id }}
+          github-app-private-key: ${{ secrets.DELIVERY_BOT_APP_PEM }}
           artifact-repository: ${{ inputs.artifact-repository }}
+          artifact-repository-owner: ${{ inputs.artifact-repository-owner }}
           artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
-          artifact-github-token: ${{ secrets.GH_PAT }}
