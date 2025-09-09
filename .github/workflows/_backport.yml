@@ -4,6 +4,14 @@ run-name: "Backport for ${{ github.event.workflow_run.head_branch }} #${{ github
 
 on:
   workflow_call:
+    secrets:
+      app-pem: { required: true }
+
+    inputs:
+      app-id:
+        type: string
+        required: true
+        description: Numeric ID of the GitHub App used to generate the installation token.
 
 jobs:
   perform:
@@ -14,11 +22,18 @@ jobs:
       actions: read
 
     steps:
+      - name: Create Github APP token
+        uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1.0.0
+        id: app-token
+        with:
+          app-id: ${{ inputs.app-id }}
+          private-key: ${{ secrets.app-pem }}
+
       - name: Download PR info artifact
         uses: actions/download-artifact@v4
         id: download-pr-info
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ github.token }}
           run-id: ${{ github.event.workflow_run.id }}
           name: pr_info
 
@@ -48,24 +63,25 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 2
           fetch-tags: false
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           persist-credentials: true
 
       - name: Configure git user
         run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name '${{ steps.app-token.outputs.user-name }}'
+          git config --global user.email '${{ steps.app-token.outputs.user-email }}'
           git config --local --add --bool push.autoSetupRemote true
 
       - name: Run backport
-        uses: webitel/reusable-workflows/actions/backport@backport-v1.0.0
+        uses: webitel/reusable-workflows/actions/backport@backport-v1.0.2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
           # If triggered by being labelled, only backport that label.
           # Otherwise, the action will backport all labels.
-          pr_label: ${{ steps.pr-info.outputs.action == 'labeled' && steps.pr-info.outputs.label || '' }}
-          pr_number: ${{ steps.pr-info.outputs.pr_number }}
-          repo_owner: ${{ github.repository_owner }}
-          repo_name: ${{ github.event.repository.name }}
-          labelsToAdd: "backport"
+          pr-label: ${{ steps.pr-info.outputs.action == 'labeled' && steps.pr-info.outputs.label || '' }}
+          pr-number: ${{ steps.pr-info.outputs.pr_number }}
+          repo-owner: ${{ github.repository_owner }}
+          repo-name: ${{ github.event.repository.name }}
+          labels-to-add: "backport"
+          binary-release-tag: "v1.0.2"
