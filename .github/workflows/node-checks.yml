@@ -2,12 +2,6 @@ name: Checks
 
 on:
   workflow_call:
-    inputs:
-      codeql:
-        type: boolean
-        required: false
-        default: true
-        description: Enable CodeQL scanning (private repository not supported)
 
 jobs:
   lint:
@@ -64,7 +58,7 @@ jobs:
   analyze:
     name: CodeQL analyze (${{ matrix.language }})
     runs-on: [ arc-frontend-runner-set ]
-    if: inputs.codeql
+    if: ! github.event.repository.private
     permissions: { checks: write, security-events: write }
     continue-on-error: true
     strategy:
