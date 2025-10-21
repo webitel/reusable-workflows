@@ -70,6 +70,7 @@ on:
       artifact-repository-owner:
         type: string
         required: false
+        default: ${{ github.repository_owner }}
         description: The owner of the GitHub App installation (defaults to current repository owner)
 
       artifact-repository:
