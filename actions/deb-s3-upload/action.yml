@@ -4,19 +4,27 @@ description: >
   Supports GPG signing and custom codename/component settings.
 
 inputs:
-  aws-secret-id:
+  s3-secret-id:
     required: true
-    description: AWS access key ID used for authentication to S3
+    description: Access key ID used for authentication to S3
 
-  aws-secret-key:
+  s3-secret-key:
     required: true
-    description: AWS secret access key used for authentication to S3
+    description: Secret access key used for authentication to S3
 
-  aws-bucket-region:
-    required: true
-    description: AWS region where the S3 bucket is located (e.g., us-east-1)
+  s3-bucket-region:
+    required: false
+    description: Region where the S3 bucket is located (e.g., us-east-1)
 
-  aws-bucket-name:
+  s3-endpoint:
+    required: false
+    description: Endpoint URL for S3 (optional)
+
+  s3-force-path-style:
+    required: false
+    description: Force path style URLs (optional)
+
+  s3-bucket-name:
     required: true
     description: Name of the S3 bucket where the package will be uploaded
 
@@ -25,12 +33,12 @@ inputs:
     description: Build artifact (e.g., .deb package) that will be uploaded to the S3 bucket
 
   codename:
-    description: Codename of the APT repository
     required: true
+    description: Codename of the APT repository
 
   component:
-    description: Component of the APT repository
     required: true
+    description: Component of the APT repository
 
   gpg-private-key:
     required: true
@@ -68,8 +76,11 @@ inputs:
 runs:
   using: composite
   steps:
+
+    # Only required when downloading artifacts from a different repository.
+    # Generates a short-lived token via GitHub App to authenticate cross-repo access.
     - name: Create Github APP token
-      uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1.0.1
+      uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1
       id: app-token
       if: inputs.artifact-repository != ''
       with:
@@ -78,8 +89,10 @@ runs:
         owner: ${{ inputs.artifact-repository-owner }}
         repositories: ${{ inputs.artifact-repository }}
 
+    # Downloads pre-built .deb packages from the specified workflow run.
+    # When artifact-repository is empty, downloads from the current repo using GITHUB_TOKEN.
     - name: Download build artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: build-packages
         repository: ${{ inputs.artifact-repository != '' && format('{0}/{1}', inputs.artifact-repository-owner, inputs.artifact-repository) || '' }}
@@ -88,7 +101,7 @@ runs:
 
     - name: Import GPG key
       id: import-gpg-key
-      uses: crazy-max/ghaction-import-gpg@v6.3.0
+      uses: crazy-max/ghaction-import-gpg@v7
       with:
         gpg_private_key: ${{ inputs.gpg-private-key }}
         passphrase: ${{ inputs.gpg-passphrase }}
@@ -97,20 +110,32 @@ runs:
     - name: Publish packages
       shell: bash
       env:
-        AWS_ACCESS_KEY_ID: ${{ inputs.aws-secret-id }}
-        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-key }}
-        AWS_DEFAULT_REGION: ${{ inputs.aws-bucket-region }}
-        AWS_BUCKET_NAME: ${{ inputs.aws-bucket-name }}
+        AWS_ACCESS_KEY_ID: ${{ inputs.s3-secret-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.s3-secret-key }}
+        AWS_REGION: ${{ inputs.s3-bucket-region }}
+        AWS_ENDPOINT_URL: ${{ inputs.s3-endpoint }}
+        S3_FORCE_PATH_STYLE: ${{ inputs.s3-force-path-style }}
+        S3_BUCKET_NAME: ${{ inputs.s3-bucket-name }}
         SOURCE_NAME: ${{ inputs.source }}
         COMPONENT: ${{ inputs.component }}
         CODENAME: ${{ inputs.codename }}
+        GPG_FINGERPRINT: ${{ steps.import-gpg-key.outputs.fingerprint }}
 
       run: |
         export GPG_TTY=$(tty)
-        deb-s3 upload ${SOURCE_NAME} --visibility nil --arch amd64 \
-          --sign ${{ steps.import-gpg-key.outputs.fingerprint }} \
-          --gpg-options "--pinentry-mode loopback" \
-          --bucket "${AWS_BUCKET_NAME}" \
-          --s3-region "${AWS_DEFAULT_REGION}" \
-          --component ${COMPONENT} \
-          --codename ${CODENAME} 
+        
+        cmd=(
+          deb-s3 upload "${SOURCE_NAME}"
+          --visibility nil
+          --arch amd64
+          --sign "${GPG_FINGERPRINT}"
+          --gpg-options "--pinentry-mode loopback"
+          --bucket "${S3_BUCKET_NAME}"
+          --component "${COMPONENT}"
+          --codename "${CODENAME}"
+        )
+        
+        [[ -n "${AWS_REGION}" ]]                     && cmd+=(--s3-region "${AWS_REGION}")
+        [[ "${S3_FORCE_PATH_STYLE}" == "true" ]]     && cmd+=(--force-path-style)
+        
+        "${cmd[@]}"
