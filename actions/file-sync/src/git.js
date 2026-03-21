@@ -341,7 +341,7 @@ export default class Git {
                 core.debug(`Created new branch ${ this.prBranch }`)
             } catch (error) {
                 // If the branch exists ignores the error
-                if (error.message !== 'Reference already exists') throw error
+                if (!error.message.includes('Reference already exists')) throw error
             }
         }
 

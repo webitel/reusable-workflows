@@ -47912,7 +47912,7 @@ ${COMMIT_BODY}`;
         });
         debug(`Created new branch ${this.prBranch}`);
       } catch (error) {
-        if (error.message !== "Reference already exists") throw error;
+        if (!error.message.includes("Reference already exists")) throw error;
       }
     }
     for (const commit of commits) {
