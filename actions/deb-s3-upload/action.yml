@@ -127,6 +127,7 @@ runs:
         cmd=(
           deb-s3 upload "${SOURCE_NAME}"
           --visibility nil
+          --preserve-versions 
           --arch amd64
           --sign "${GPG_FINGERPRINT}"
           --gpg-options "--pinentry-mode loopback"
