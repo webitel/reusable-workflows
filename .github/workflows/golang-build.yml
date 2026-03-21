@@ -108,7 +108,7 @@ jobs:
         with:
           repository: webitel/reusable-workflows
           path: .shared-actions
-          ref: v1
+          ref: v2
 
       - name: Register Golang problem matcher
         run: |

@@ -48,7 +48,7 @@ on:
 jobs:
   version:
     name: Version
-    uses: webitel/reusable-workflows/.github/workflows/_version.yml@v1
+    uses: webitel/reusable-workflows/.github/workflows/_version.yml@v2
     if: inputs.only-dependencies != 'true'
     with:
       development-branch: ${{ inputs.development-branch }}
