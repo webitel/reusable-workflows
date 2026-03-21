@@ -8,8 +8,8 @@ on:
       DEPLOYMENTS_SSH_HOST_DEVELOPMENT: { required: true }
       DEPLOYMENTS_SSH_HOST_TESTING: { required: true }
       DEPLOYMENTS_SSH_HOST_STAGING: { required: true }
-      DEB_AWS_ACCESS_KEY_ID: { required: true }
-      DEB_AWS_SECRET_ACCESS_KEY: { required: true }
+      DEB_S3_ACCESS_KEY_ID: { required: true }
+      DEB_S3_SECRET_ACCESS_KEY: { required: true }
       REPO_SIGNING_KEY: { required: true }
       REPO_SIGNING_KEY_PASSPHRASE: { required: true }
       DELIVERY_BOT_APP_PEM: { required: false }
@@ -52,13 +52,22 @@ on:
         required: true
         description: Nickname used for specific Debian releases.
 
-      deb-aws-bucket-name:
+      deb-s3-bucket-name:
         type: string
         required: true
 
-      deb-aws-bucket-region:
+      deb-s3-bucket-region:
         type: string
-        required: true
+        required: false
+
+      deb-s3-endpoint:
+        type: string
+        required: false
+
+      deb-s3-force-path-style:
+        type: boolean
+        required: false
+        default: false
 
       github-app-id:
         type: string
@@ -179,8 +188,8 @@ jobs:
         (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.version != inputs.triggered-branch))
 
     secrets:
-      DEB_AWS_ACCESS_KEY_ID: ${{ secrets.DEB_AWS_ACCESS_KEY_ID }}
-      DEB_AWS_SECRET_ACCESS_KEY: ${{ secrets.DEB_AWS_SECRET_ACCESS_KEY }}
+      DEB_S3_ACCESS_KEY_ID: ${{ secrets.DEB_S3_ACCESS_KEY_ID }}
+      DEB_S3_SECRET_ACCESS_KEY: ${{ secrets.DEB_S3_SECRET_ACCESS_KEY }}
       REPO_SIGNING_KEY: ${{ secrets.REPO_SIGNING_KEY }}
       REPO_SIGNING_KEY_PASSPHRASE: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}
       DELIVERY_BOT_APP_PEM: ${{ secrets.DELIVERY_BOT_APP_PEM }}
@@ -188,10 +197,12 @@ jobs:
     with:
       repository-environment: ${{ inputs.repository-environment }}
       deb-package-pattern: ${{ inputs.deb-package-pattern }}
-      deb-component: ${{ inputs.component }}
+      deb-component: ${{ inputs.deb-component }}
       deb-codename: ${{ inputs.deb-codename }}
-      deb-aws-bucket-name: ${{ inputs.deb-aws-bucket-name }}
-      deb-aws-bucket-region: ${{ inputs.deb-aws-bucket-region }}
+      deb-s3-bucket-name: ${{ inputs.deb-s3-bucket-name }}
+      deb-s3-bucket-region: ${{ inputs.deb-s3-bucket-region }}
+      deb-s3-endpoint: ${{ inputs.deb-s3-endpoint }}
+      deb-s3-force-path-style: ${{ inputs.deb-s3-force-path-style }}
       github-app-id: ${{ inputs.github-app-id }}
       artifact-repository: ${{ inputs.artifact-repository }}
       artifact-repository-owner: ${{ inputs.artifact-repository-owner }}
@@ -209,7 +220,7 @@ jobs:
     permissions: { contents: write }
     steps:
       - name: Create Github APP token
-        uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1.0.1
+        uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1
         id: app-token
         if: inputs.artifact-repository != ''
         with:

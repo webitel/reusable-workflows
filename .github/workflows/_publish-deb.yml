@@ -3,8 +3,8 @@ name: Publish .deb package
 on:
   workflow_call:
     secrets:
-      DEB_AWS_ACCESS_KEY_ID: { required: true }
-      DEB_AWS_SECRET_ACCESS_KEY: { required: true }
+      DEB_S3_ACCESS_KEY_ID: { required: true }
+      DEB_S3_SECRET_ACCESS_KEY: { required: true }
       REPO_SIGNING_KEY: { required: true }
       REPO_SIGNING_KEY_PASSPHRASE: { required: true }
       DELIVERY_BOT_APP_PEM: { required: false }
@@ -32,30 +32,43 @@ on:
         required: true
         description: Nickname used for specific Debian releases.
 
-      deb-aws-bucket-name:
+      deb-s3-bucket-name:
         type: string
         required: true
+        description: Name of the S3 bucket where the package will be uploaded.
 
-      deb-aws-bucket-region:
+      deb-s3-bucket-region:
         type: string
-        required: true
+        required: false
+        description: Region where the S3 bucket is located (e.g., us-east-1). Defaults to us-east-1 if not specified.
+
+      deb-s3-endpoint:
+        type: string
+        required: false
+        description: Custom endpoint URL for S3-compatible storage (e.g., MinIO, Ceph). If not set, defaults to AWS S3.
+
+      deb-s3-force-path-style:
+        type: boolean
+        required: false
+        default: false
+        description: Force path style URLs instead of subdomain-based (required for most S3-compatible storages like MinIO).
 
       github-app-id:
         type: string
         required: false
         description: |
           Numeric ID of the GitHub App used to generate the installation token.
-          This is required when downloading artifacts from a different repository or from a different workflow run
+          This is required when downloading artifacts from a different repository or from a different workflow run.
 
       artifact-repository-owner:
         type: string
         required: false
-        description: The owner of the GitHub App installation (defaults to current repository owner)
+        description: The owner of the GitHub App installation (defaults to current repository owner).
 
       artifact-repository:
         type: string
         required: false
-        description: The repository name joined that artifacts will be downloaded from
+        description: The repository name that artifacts will be downloaded from.
 
       artifact-actions-run-id:
         type: string
@@ -71,15 +84,17 @@ jobs:
     environment: ${{ inputs.repository-environment }}
     steps:
       - name: Publish build
-        uses: webitel/reusable-workflows/actions/deb-s3-upload@deb-s3-upload-v1.0.1
+        uses: webitel/reusable-workflows/actions/deb-s3-upload@deb-s3-upload-v1
         with:
           source: ${{ inputs.deb-package-pattern }}
           component: ${{ inputs.deb-component }}
           codename: ${{ inputs.deb-codename }}
-          aws-bucket-name: ${{ inputs.deb-aws-bucket-name }}
-          aws-bucket-region: ${{ inputs.deb-aws-bucket-region }}
-          aws-secret-id: ${{ secrets.DEB_AWS_ACCESS_KEY_ID }}
-          aws-secret-key: ${{ secrets.DEB_AWS_SECRET_ACCESS_KEY }}
+          s3-bucket-name: ${{ inputs.deb-s3-bucket-name }}
+          s3-bucket-region: ${{ inputs.deb-s3-bucket-region }}
+          s3-endpoint: ${{ inputs.deb-s3-endpoint }}
+          s3-force-path-style: ${{ inputs.deb-s3-force-path-style }}
+          s3-secret-id: ${{ secrets.DEB_S3_ACCESS_KEY_ID }}
+          s3-secret-key: ${{ secrets.DEB_S3_SECRET_ACCESS_KEY }}
           gpg-private-key: ${{ secrets.REPO_SIGNING_KEY }}
           gpg-passphrase: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}
           github-app-id: ${{ inputs.github-app-id }}
