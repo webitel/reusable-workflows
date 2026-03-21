@@ -65,7 +65,7 @@ jobs:
         run: go generate ./...
 
       - name: Upload generated code
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: generated-code
           retention-days: 1
