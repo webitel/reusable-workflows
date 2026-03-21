@@ -25,7 +25,7 @@ const {
     FORK
 } = config
 
-import { dedent, execCmd } from './helpers.js'
+import { dedent, execCmd, shellQuote } from './helpers.js'
 
 export default class Git {
     constructor() {
@@ -96,7 +96,7 @@ export default class Git {
         core.debug(`Cloning ${ this.repo.fullName } into ${ this.workingDir }`)
 
         return execCmd(
-            `git clone --depth 1 ${ this.repo.branch !== 'default' ? '--branch "' + this.repo.branch + '"' : '' } ${ this.gitUrl } ${ this.workingDir }`
+            `git clone --depth 1 ${ this.repo.branch !== 'default' ? '--branch ' + shellQuote(this.repo.branch) : '' } ${ this.gitUrl } ${ shellQuote(this.workingDir) }`
         )
     }
 
@@ -114,8 +114,12 @@ export default class Git {
 
         core.debug(`Setting git user to email: ${ email }, username: ${ username }`)
 
+        await execCmd(
+            `git config --local user.name ${ shellQuote(username) }`,
+            this.workingDir
+        )
         return execCmd(
-            `git config --local user.name "${ username }" && git config --local user.email "${ email }"`,
+            `git config --local user.email ${ shellQuote(email) }`,
             this.workingDir
         )
     }
@@ -139,7 +143,7 @@ export default class Git {
         core.debug(`Creating PR Branch ${ newBranch }`)
 
         await execCmd(
-            `git checkout -b "${ newBranch }"`,
+            `git checkout -b ${ shellQuote(newBranch) }`,
             this.workingDir
         )
 
@@ -148,7 +152,7 @@ export default class Git {
 
     async add(file) {
         return execCmd(
-            `git add -f "${ file }"`,
+            `git add -f ${ shellQuote(file) }`,
             this.workingDir
         )
     }
@@ -208,7 +212,7 @@ export default class Git {
 
     async changes(destination) { // gets array of git diffs for the destination, which either can be a file or a dict
         const output = await execCmd(
-            `git diff HEAD ${ destination }`,
+            `git diff HEAD -- ${ shellQuote(destination) }`,
             this.workingDir
         )
         return Object.values(this.parseGitDiffOutput(output))
@@ -229,7 +233,7 @@ export default class Git {
             message += `\n\n${ COMMIT_BODY }`
         }
         return execCmd(
-            `git commit -m '${ message.replace(/'/g, '\'\\\'\'') }'`,
+            `git commit -m ${ shellQuote(message) }`,
             this.workingDir
         )
     }
@@ -366,7 +370,7 @@ export default class Git {
     async push() {
         if (FORK) {
             return execCmd(
-                `git push -u fork ${ this.prBranch } --force`,
+                `git push -u fork ${ shellQuote(this.prBranch) } --force`,
                 this.workingDir
             )
         }

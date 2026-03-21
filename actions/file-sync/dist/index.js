@@ -48348,6 +48348,9 @@ function dedent(templateStrings, ...values) {
   }
   return string;
 }
+function shellQuote(s) {
+  return "'" + String(s).replace(/'/g, "'\\''") + "'";
+}
 function execCmd(command, workingDir, trimResult = true) {
   debug(`EXEC: "${command}" IN ${workingDir}`);
   return new Promise((resolve, reject) => {
@@ -48518,7 +48521,7 @@ class Git {
   async clone() {
     debug(`Cloning ${this.repo.fullName} into ${this.workingDir}`);
     return execCmd(
-      `git clone --depth 1 ${this.repo.branch !== "default" ? '--branch "' + this.repo.branch + '"' : ""} ${this.gitUrl} ${this.workingDir}`
+      `git clone --depth 1 ${this.repo.branch !== "default" ? "--branch " + shellQuote(this.repo.branch) : ""} ${this.gitUrl} ${shellQuote(this.workingDir)}`
     );
   }
   async setIdentity() {
@@ -48532,8 +48535,12 @@ class Git {
       }
     }
     debug(`Setting git user to email: ${email}, username: ${username}`);
+    await execCmd(
+      `git config --local user.name ${shellQuote(username)}`,
+      this.workingDir
+    );
     return execCmd(
-      `git config --local user.name "${username}" && git config --local user.email "${email}"`,
+      `git config --local user.email ${shellQuote(email)}`,
       this.workingDir
     );
   }
@@ -48551,14 +48558,14 @@ class Git {
     }
     debug(`Creating PR Branch ${newBranch}`);
     await execCmd(
-      `git checkout -b "${newBranch}"`,
+      `git checkout -b ${shellQuote(newBranch)}`,
       this.workingDir
     );
     this.prBranch = newBranch;
   }
   async add(file) {
     return execCmd(
-      `git add -f "${file}"`,
+      `git add -f ${shellQuote(file)}`,
       this.workingDir
     );
   }
@@ -48611,7 +48618,7 @@ ${string}`.split("\ndiff --git").slice(1).reduce((resultDict, fileDiff) => {
   }
   async changes(destination) {
     const output = await execCmd(
-      `git diff HEAD ${destination}`,
+      `git diff HEAD -- ${shellQuote(destination)}`,
       this.workingDir
     );
     return Object.values(this.parseGitDiffOutput(output));
@@ -48631,7 +48638,7 @@ ${string}`.split("\ndiff --git").slice(1).reduce((resultDict, fileDiff) => {
 ${COMMIT_BODY}`;
     }
     return execCmd(
-      `git commit -m '${message.replace(/'/g, "'\\''")}'`,
+      `git commit -m ${shellQuote(message)}`,
       this.workingDir
     );
   }
@@ -48742,7 +48749,7 @@ ${COMMIT_BODY}`;
   async push() {
     if (FORK$1) {
       return execCmd(
-        `git push -u fork ${this.prBranch} --force`,
+        `git push -u fork ${shellQuote(this.prBranch)} --force`,
         this.workingDir
       );
     }

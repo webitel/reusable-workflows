@@ -65,6 +65,12 @@ export function dedent(templateStrings, ...values) {
     return string
 }
 
+// POSIX shell quoting: wraps value in single quotes, escaping embedded single quotes.
+// Prevents shell injection when interpolating untrusted values into commands.
+export function shellQuote(s) {
+    return "'" + String(s).replace(/'/g, "'\\''") + "'"
+}
+
 export function execCmd(command, workingDir, trimResult = true) {
     core.debug(`EXEC: "${ command }" IN ${ workingDir }`)
     return new Promise((resolve, reject) => {
