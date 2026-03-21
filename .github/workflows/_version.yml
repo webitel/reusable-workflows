@@ -40,11 +40,15 @@ jobs:
       - name: Get version
         id: version
         uses: actions/github-script@v8
+        env:
+          DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
+          TRIGGERED_BRANCH: ${{ inputs.triggered-branch }}
+          LATEST_RELEASE_BRANCH: ${{ steps.latest-release-branch.outputs.version }}
         with:
           script: |
-            const developmentBranch = '${{ inputs.development-branch }}';
-            const triggeredBranch = '${{ inputs.triggered-branch }}';
-            const latestReleaseBranch = '${{ steps.latest-release-branch.outputs.version }}';
+            const developmentBranch = process.env.DEVELOPMENT_BRANCH;
+            const triggeredBranch = process.env.TRIGGERED_BRANCH;
+            const latestReleaseBranch = process.env.LATEST_RELEASE_BRANCH;
             
             console.log(`📋 Development branch: ${developmentBranch}`);
             console.log(`🔀 Triggered branch: ${triggeredBranch}`);
