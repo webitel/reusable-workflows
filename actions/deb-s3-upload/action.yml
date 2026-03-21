@@ -36,6 +36,11 @@ inputs:
     required: true
     description: Codename of the APT repository
 
+  arch:
+    required: false
+    default: amd64
+    description: Package architecture (e.g., amd64, arm64)
+
   component:
     required: true
     description: Component of the APT repository
@@ -117,6 +122,7 @@ runs:
         S3_FORCE_PATH_STYLE: ${{ inputs.s3-force-path-style }}
         S3_BUCKET_NAME: ${{ inputs.s3-bucket-name }}
         SOURCE_NAME: ${{ inputs.source }}
+        ARCH: ${{ inputs.arch }}
         COMPONENT: ${{ inputs.component }}
         CODENAME: ${{ inputs.codename }}
         GPG_FINGERPRINT: ${{ steps.import-gpg-key.outputs.fingerprint }}
@@ -128,7 +134,7 @@ runs:
           deb-s3 upload "${SOURCE_NAME}"
           --visibility nil
           --preserve-versions 
-          --arch amd64
+          --arch "${ARCH}"
           --sign "${GPG_FINGERPRINT}"
           --gpg-options "--pinentry-mode loopback"
           --bucket "${S3_BUCKET_NAME}"
