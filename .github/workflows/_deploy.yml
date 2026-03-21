@@ -27,6 +27,12 @@ on:
         required: true
         description: A path pattern to artifact, that should be uploaded to environments and installed.
 
+      arch:
+        type: string
+        required: false
+        default: amd64
+        description: Package architecture (e.g., amd64, arm64).
+
       github-app-id:
         type: string
         required: false
@@ -71,6 +77,7 @@ jobs:
           artifact-repository: ${{ inputs.artifact-repository }}
           artifact-repository-owner: ${{ inputs.artifact-repository-owner }}
           artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
+          arch: ${{ inputs.arch }}
 
   testing:
     name: Testing
@@ -91,6 +98,7 @@ jobs:
           artifact-repository: ${{ inputs.artifact-repository }}
           artifact-repository-owner: ${{ inputs.artifact-repository-owner }}
           artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
+          arch: ${{ inputs.arch }}
 
   check-latest:
     name: Check latest release
@@ -128,3 +136,4 @@ jobs:
           artifact-repository: ${{ inputs.artifact-repository }}
           artifact-repository-owner: ${{ inputs.artifact-repository-owner }}
           artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
+          arch: ${{ inputs.arch }}
