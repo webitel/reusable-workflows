@@ -15,10 +15,30 @@ on:
         default: ${{ github.ref_name }}
         description: Name of the triggered branch
 
+      arch:
+        type: string
+        required: false
+        default: amd64
+        description: Comma-separated list of target architectures (e.g., "amd64" or "amd64, arm64").
+
+      codename:
+        type: string
+        required: false
+        default: bookworm
+        description: Comma-separated list of Debian codenames (e.g., "bookworm" or "bookworm, jammy").
+
     outputs:
       version:
         value: ${{ jobs.parse.outputs.version }}
         description: Extracted version
+
+      arch-matrix:
+        value: ${{ jobs.parse.outputs.arch }}
+        description: JSON array of target architectures
+
+      codename-matrix:
+        value: ${{ jobs.parse.outputs.codename }}
+        description: JSON array of Debian codenames
 
 jobs:
   parse:
@@ -26,8 +46,21 @@ jobs:
     runs-on: [ arc-runner-set ]
     outputs:
       version: ${{ steps.version.outputs.version }}
+      arch: ${{ steps.matrix.outputs.arch }}
+      codename: ${{ steps.matrix.outputs.codename }}
 
     steps:
+      - name: Parse build matrix
+        id: matrix
+        shell: bash
+        run: |
+          to_json() { echo "$1" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -v '^$' | jq -Rc . | jq -sc .; }
+          echo "arch=$(to_json "$ARCH")" >> "$GITHUB_OUTPUT"
+          echo "codename=$(to_json "$CODENAME")" >> "$GITHUB_OUTPUT"
+        env:
+          ARCH: ${{ inputs.arch }}
+          CODENAME: ${{ inputs.codename }}
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:

@@ -35,6 +35,12 @@ on:
           Package contents specification in nFPM format.
           See: https://github.com/webitel/reusable-workflows/tree/main/actions/nfpm-build-action#contents-format
 
+      arch:
+        type: string
+        required: false
+        default: amd64
+        description: Target architecture (e.g., amd64, arm64).
+
 jobs:
   compile:
     name: Application
@@ -79,7 +85,7 @@ jobs:
           target: dist
           maintainer: Webitel <support@webitel.com>
           homepage: https://webitel.com
-          arch: amd64
+          arch: ${{ inputs.arch }}
           platform: linux
           package-name: ${{ inputs.package-name }}
           package-description: ${{ inputs.package-description }}
@@ -92,7 +98,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: build-packages-amd64
+          name: build-packages-${{ inputs.arch }}
           retention-days: 7
           compression-level: 9
           path: dist

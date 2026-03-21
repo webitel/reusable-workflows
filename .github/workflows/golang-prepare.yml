@@ -25,10 +25,30 @@ on:
         required: false
         default: ''
 
+      arch:
+        type: string
+        required: false
+        default: amd64
+        description: Comma-separated list of target architectures (e.g., "amd64" or "amd64, arm64").
+
+      codename:
+        type: string
+        required: false
+        default: bookworm
+        description: Comma-separated list of Debian codenames (e.g., "bookworm" or "bookworm, jammy").
+
     outputs:
       version:
         value: ${{ jobs.version.outputs.version }}
         description: Extracted version
+
+      arch-matrix:
+        value: ${{ jobs.version.outputs.arch-matrix }}
+        description: JSON array of target architectures
+
+      codename-matrix:
+        value: ${{ jobs.version.outputs.codename-matrix }}
+        description: JSON array of Debian codenames
 
 jobs:
   version:
@@ -38,6 +58,8 @@ jobs:
     with:
       development-branch: ${{ inputs.development-branch }}
       triggered-branch: ${{ inputs.triggered-branch }}
+      arch: ${{ inputs.arch }}
+      codename: ${{ inputs.codename }}
 
   dependencies:
     name: Dependencies
