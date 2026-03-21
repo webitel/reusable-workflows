@@ -123,7 +123,7 @@ jobs:
       - name: Parse package contents for upload
         id: parse-upload-pattern
         if: inputs.package-contents != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const packageContents = `${{ inputs.package-contents }}`.trim();
@@ -180,7 +180,7 @@ jobs:
       - name: Parse scripts for upload
         id: parse-scripts-pattern
         if: inputs.scripts != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const scripts = `${{ inputs.scripts }}`.trim();
