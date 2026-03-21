@@ -27,6 +27,12 @@ on:
         default: dev
         description: Component of the APT repository.
 
+      arch:
+        type: string
+        required: false
+        default: amd64
+        description: Package architecture (e.g., amd64, arm64).
+
       deb-codename:
         type: string
         required: true
@@ -84,9 +90,10 @@ jobs:
     environment: ${{ inputs.repository-environment }}
     steps:
       - name: Publish build
-        uses: webitel/reusable-workflows/actions/deb-s3-upload@deb-s3-upload-v1
+        uses: webitel/reusable-workflows/actions/deb-s3-upload@deb-s3-upload-v2
         with:
           source: ${{ inputs.deb-package-pattern }}
+          arch: ${{ inputs.arch }}
           component: ${{ inputs.deb-component }}
           codename: ${{ inputs.deb-codename }}
           s3-bucket-name: ${{ inputs.deb-s3-bucket-name }}
