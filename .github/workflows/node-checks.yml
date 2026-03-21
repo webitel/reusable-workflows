@@ -11,10 +11,10 @@ jobs:
     continue-on-error: true
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Checkout shared-actions (for matcher)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: webitel/reusable-workflows
           path: .shared-actions
@@ -41,7 +41,7 @@ jobs:
     continue-on-error: true
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install dependencies
         run: npm ci --install-links --install-strategy shallow
@@ -70,7 +70,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install dependencies
         if: matrix.language == 'javascript'
