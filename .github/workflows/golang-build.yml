@@ -258,7 +258,6 @@ jobs:
         id: build
         uses: webitel/reusable-workflows/actions/nfpm-build@nfpm-build-v2
         with:
-          nfpm-version: latest
           formats: deb
           target: dist
           maintainer: Webitel <support@webitel.com>
