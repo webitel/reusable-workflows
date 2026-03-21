@@ -93,7 +93,7 @@ jobs:
     environment: development
     steps:
       - name: Deploy
-        uses: webitel/reusable-workflows/actions/deploy@deploy-v1.0.1
+        uses: webitel/reusable-workflows/actions/deploy@deploy-v1
         with:
           source: ${{ inputs.deb-package-pattern }}
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_DEVELOPMENT }}
@@ -113,7 +113,7 @@ jobs:
     environment: testing
     steps:
       - name: Deploy
-        uses: webitel/reusable-workflows/actions/deploy@deploy-v1.0.1
+        uses: webitel/reusable-workflows/actions/deploy@deploy-v1
         with:
           source: ${{ inputs.deb-package-pattern }}
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_TESTING }}
@@ -150,7 +150,7 @@ jobs:
     environment: staging
     steps:
       - name: Deploy
-        uses: webitel/reusable-workflows/actions/deploy@deploy-v1.0.1
+        uses: webitel/reusable-workflows/actions/deploy@deploy-v1
         with:
           source: ${{ inputs.deb-package-pattern }}
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_STAGING }}
