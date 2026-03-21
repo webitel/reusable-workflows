@@ -47610,7 +47610,7 @@ async function copy(src, dest, isDirectory, file) {
     }
   } else {
     debug(`Copy ${src} to ${dest}`);
-    await fs.copy(src, dest, file.exclude !== void 0 && { filter: filterFunc });
+    await fs.copy(src, dest, file.exclude !== void 0 ? { filter: filterFunc } : void 0);
   }
   if (deleteOrphaned) {
     const srcFileList = await listFiles(src);
