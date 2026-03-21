@@ -99,7 +99,7 @@ runs:
     - name: Download build artifacts
       uses: actions/download-artifact@v8
       with:
-        name: build-packages
+        name: build-packages-${{ inputs.arch }}
         repository: ${{ inputs.artifact-repository != '' && format('{0}/{1}', inputs.artifact-repository-owner, inputs.artifact-repository) || '' }}
         run-id: ${{ inputs.artifact-actions-run-id }}
         github-token: ${{ steps.app-token.outputs.token }}

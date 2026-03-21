@@ -48,6 +48,11 @@ inputs:
     description: |
       The id of the workflow run where the desired download artifact was uploaded from
 
+  arch:
+    required: false
+    default: amd64
+    description: Package architecture (e.g., amd64, arm64)
+
 runs:
   using: composite
   steps:
@@ -64,7 +69,7 @@ runs:
     - name: Download build artifacts
       uses: actions/download-artifact@v8
       with:
-        name: build-packages
+        name: build-packages-${{ inputs.arch }}
         repository: ${{ inputs.artifact-repository != '' && format('{0}/{1}', inputs.artifact-repository-owner, inputs.artifact-repository) || '' }}
         run-id: ${{ inputs.artifact-actions-run-id }}
         github-token: ${{ steps.app-token.outputs.token }}
