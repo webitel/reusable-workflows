@@ -1,8 +1,19 @@
 import fs from 'fs-extra'
-import readfiles from 'node-readfiles'
+import { readdir } from 'node:fs/promises'
 import { exec } from 'child_process'
 import * as core from '@actions/core'
 import * as path from 'path'
+
+/**
+ * Recursively list all files (including hidden) relative to dir.
+ * Replaces node-readfiles which uses AMD format incompatible with rollup.
+ */
+async function listFiles(dir) {
+	const entries = await readdir(dir, { recursive: true, withFileTypes: true })
+	return entries
+		.filter(e => e.isFile())
+		.map(e => path.relative(dir, path.join(e.parentPath || e.path, e.name)))
+}
 import nunjucks from 'nunjucks'
 
 // Configure Nunjucks with defaults; tags can be overridden via setNunjucksTags
@@ -144,7 +155,7 @@ export async function copy(src, dest, isDirectory, file) {
         if (isDirectory) {
             core.debug(`Render all files in directory ${ src } to ${ dest }`)
 
-            const srcFileList = await readfiles(src, { readContents: false, hidden: true })
+            const srcFileList = await listFiles(src)
             for (const srcFile of srcFileList) {
                 if (!filterFunc(srcFile)) { continue }
 
@@ -166,8 +177,8 @@ export async function copy(src, dest, isDirectory, file) {
     // If it is a directory and deleteOrphaned is enabled - check if there are any files that were removed from source dir and remove them in destination dir
     if (deleteOrphaned) {
 
-        const srcFileList = await readfiles(src, { readContents: false, hidden: true })
-        const destFileList = await readfiles(dest, { readContents: false, hidden: true })
+        const srcFileList = await listFiles(src)
+        const destFileList = await listFiles(dest)
 
         for (const destFile of destFileList) {
             if (destFile.startsWith('.git')) return

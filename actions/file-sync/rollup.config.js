@@ -14,7 +14,7 @@ export default {
         commonjs(),
         json(),
         esbuild({
-            target: 'node20',
+            target: 'node24',
             minify: false
         }),
     ],
