@@ -10,8 +10,53 @@ on:
         description: Download generated code
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: [ arc-backend-runner-set ]
+    permissions:
+      pull-requests: read
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      dependencies: ${{ steps.filter.outputs.dependencies }}
+      codeql-matrix: ${{ steps.matrix.outputs.languages }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            go:
+              - '**/*.go'
+            dependencies:
+              - 'go.mod'
+              - 'go.sum'
+            workflows:
+              - '.github/**'
+
+      # Build a dynamic CodeQL matrix based on changed paths:
+      # - Go source or dependency changes → analyze Go code
+      # - Workflow/action file changes → analyze GitHub Actions
+      - name: Build CodeQL matrix
+        id: matrix
+        run: |
+          languages='[]'
+          if [[ "${{ steps.filter.outputs.go }}" == "true" ]] || [[ "${{ steps.filter.outputs.dependencies }}" == "true" ]]; then
+            languages=$(echo "$languages" | jq -c '. + [{"language": "go", "build-mode": "autobuild"}]')
+          fi
+          
+          if [[ "${{ steps.filter.outputs.workflows }}" == "true" ]]; then
+            languages=$(echo "$languages" | jq -c '. + [{"language": "actions", "build-mode": "none"}]')
+          fi
+          
+          echo "languages=$languages" >> "$GITHUB_OUTPUT"
+
   lint:
     name: Lint code
+    needs: [ changes ]
+    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.dependencies == 'true'
     runs-on: [ arc-backend-runner-set ]
     continue-on-error: true
     steps:
@@ -35,6 +80,8 @@ jobs:
 
   govulncheck:
     name: Vulnerabilities
+    needs: [ changes ]
+    if: needs.changes.outputs.dependencies == 'true'
     runs-on: [ arc-backend-runner-set ]
     permissions:
       security-events: write
@@ -69,6 +116,8 @@ jobs:
 
   test:
     name: Unit testing
+    needs: [ changes ]
+    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.dependencies == 'true'
     runs-on: [ arc-backend-runner-set ]
     continue-on-error: true
     steps:
@@ -92,10 +141,12 @@ jobs:
         with:
           paths: report.xml
 
+  # Dynamic matrix: only includes languages whose files actually changed.
   analyze:
     name: CodeQL analyze (${{ matrix.language }})
+    needs: [ changes ]
     runs-on: [ arc-backend-runner-set ]
-    if: github.event.repository.private == false
+    if: github.event.repository.private == false && needs.changes.outputs.codeql-matrix != '[]'
     permissions:
       security-events: write
 
@@ -103,11 +154,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - language: actions
-            build-mode: none
-          - language: go
-            build-mode: autobuild
+        include: ${{ fromJSON(needs.changes.outputs.codeql-matrix) }}
 
     steps:
       - name: Checkout repository
