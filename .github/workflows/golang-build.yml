@@ -81,6 +81,12 @@ on:
         required: false
         description: Scripts to run at specific stages.
 
+      arch:
+        type: string
+        required: false
+        default: amd64
+        description: Target architecture (e.g., amd64, arm64). Maps to GOARCH.
+
       generated-code:
         type: string
         required: false
@@ -118,7 +124,7 @@ jobs:
         run: go build ${{ inputs.build-args }} -ldflags="${{ inputs.ldflags }}" -o "${{ inputs.binary-name }}" ${{ inputs.main-path }}
         env:
           GOOS: linux
-          GOARCH: amd64
+          GOARCH: ${{ inputs.arch }}
 
       - name: Parse package contents for upload
         id: parse-upload-pattern
@@ -228,7 +234,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: build-source
+          name: build-source-${{ inputs.arch }}
           retention-days: 1
           compression-level: 9
           include-hidden-files: true
@@ -246,7 +252,7 @@ jobs:
       - name: Download compiled file
         uses: actions/download-artifact@v8
         with:
-          name: build-source
+          name: build-source-${{ inputs.arch }}
 
       - name: Build package
         id: build
@@ -257,7 +263,7 @@ jobs:
           target: dist
           maintainer: Webitel <support@webitel.com>
           homepage: https://webitel.com
-          arch: amd64
+          arch: ${{ inputs.arch }}
           platform: linux
           package-name: ${{ inputs.package-name }}
           package-description: ${{ inputs.package-description }}
@@ -275,7 +281,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: build-packages
+          name: build-packages-${{ inputs.arch }}
           retention-days: 7
           compression-level: 9
           path: dist
