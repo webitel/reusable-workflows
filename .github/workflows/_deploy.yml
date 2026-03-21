@@ -8,10 +8,6 @@ on:
       DEPLOYMENTS_SSH_HOST_DEVELOPMENT: { required: true }
       DEPLOYMENTS_SSH_HOST_TESTING: { required: true }
       DEPLOYMENTS_SSH_HOST_STAGING: { required: true }
-      DEB_S3_ACCESS_KEY_ID: { required: true }
-      DEB_S3_SECRET_ACCESS_KEY: { required: true }
-      REPO_SIGNING_KEY: { required: true }
-      REPO_SIGNING_KEY_PASSPHRASE: { required: true }
       DELIVERY_BOT_APP_PEM: { required: false }
 
     inputs:
@@ -19,16 +15,6 @@ on:
         type: string
         required: false
         default: ${{ github.ref_name }}
-
-      tag:
-        type: string
-        required: false
-        description: Package version to create tag.
-
-      tag-target-commitish:
-        type: string
-        required: false
-        default: ${{ github.sha }}
 
       repository-environment:
         type: string
@@ -40,34 +26,6 @@ on:
         type: string
         required: true
         description: A path pattern to artifact, that should be uploaded to environments and installed.
-
-      deb-component:
-        type: string
-        required: false
-        default: dev
-        description: Component of the APT repository.
-
-      deb-codename:
-        type: string
-        required: true
-        description: Nickname used for specific Debian releases.
-
-      deb-s3-bucket-name:
-        type: string
-        required: true
-
-      deb-s3-bucket-region:
-        type: string
-        required: false
-
-      deb-s3-endpoint:
-        type: string
-        required: false
-
-      deb-s3-force-path-style:
-        type: boolean
-        required: false
-        default: false
 
       github-app-id:
         type: string
@@ -170,81 +128,3 @@ jobs:
           artifact-repository: ${{ inputs.artifact-repository }}
           artifact-repository-owner: ${{ inputs.artifact-repository-owner }}
           artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
-
-  repository:
-    name: Publish .deb package
-    needs: [ testing, check-latest, staging ]
-    uses: webitel/reusable-workflows/.github/workflows/_publish-deb.yml@v1
-
-    # Run even if previous jobs fail or are canceled, but
-    # do not run if the workflow was canceled.
-    # Case 1: Development deployment (acceptance environment)
-    # Case 2: Latest release deployment (non-acceptance environment)
-    # Case 3: Other release deployment (non-acceptance environment and not the latest release)
-    if: |
-      always() && !cancelled() &&
-      ((inputs.repository-environment == 'acceptance' && needs.testing.result == 'success') ||
-        (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.version == inputs.triggered-branch && needs.staging.result == 'success') ||
-        (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.version != inputs.triggered-branch))
-
-    secrets:
-      DEB_S3_ACCESS_KEY_ID: ${{ secrets.DEB_S3_ACCESS_KEY_ID }}
-      DEB_S3_SECRET_ACCESS_KEY: ${{ secrets.DEB_S3_SECRET_ACCESS_KEY }}
-      REPO_SIGNING_KEY: ${{ secrets.REPO_SIGNING_KEY }}
-      REPO_SIGNING_KEY_PASSPHRASE: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}
-      DELIVERY_BOT_APP_PEM: ${{ secrets.DELIVERY_BOT_APP_PEM }}
-
-    with:
-      repository-environment: ${{ inputs.repository-environment }}
-      deb-package-pattern: ${{ inputs.deb-package-pattern }}
-      deb-component: ${{ inputs.deb-component }}
-      deb-codename: ${{ inputs.deb-codename }}
-      deb-s3-bucket-name: ${{ inputs.deb-s3-bucket-name }}
-      deb-s3-bucket-region: ${{ inputs.deb-s3-bucket-region }}
-      deb-s3-endpoint: ${{ inputs.deb-s3-endpoint }}
-      deb-s3-force-path-style: ${{ inputs.deb-s3-force-path-style }}
-      github-app-id: ${{ inputs.github-app-id }}
-      artifact-repository: ${{ inputs.artifact-repository }}
-      artifact-repository-owner: ${{ inputs.artifact-repository-owner }}
-      artifact-actions-run-id: ${{ inputs.artifact-actions-run-id }}
-
-  release:
-    name: Release assets
-    needs: [ check-latest, staging ]
-    runs-on: [ arc-runner-set ]
-    if: |
-      always() && !cancelled() && inputs.repository-environment != 'acceptance' && inputs.tag != '' &&
-      ((inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.version == inputs.triggered-branch && needs.staging.result == 'success') ||
-        (inputs.repository-environment != 'acceptance' && needs.check-latest.outputs.version != inputs.triggered-branch))
-
-    permissions: { contents: write }
-    steps:
-      - name: Create Github APP token
-        uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1
-        id: app-token
-        if: inputs.artifact-repository != ''
-        with:
-          app-id: ${{ inputs.github-app-id }}
-          private-key: ${{ secrets.DELIVERY_BOT_APP_PEM }}
-          owner: ${{ inputs.artifact-repository-owner }}
-          repositories: ${{ inputs.artifact-repository }}
-
-      - name: Download package
-        uses: actions/download-artifact@v8
-        with:
-          name: build-packages
-          path: dist
-          repository: ${{ inputs.artifact-repository != '' && format('{0}/{1}', inputs.artifact-repository-owner, inputs.artifact-repository) || '' }}
-          run-id: ${{ inputs.artifact-actions-run-id }}
-          github-token: ${{ steps.app-token.outputs.token }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ${{ inputs.tag }}
-          tag_name: ${{ inputs.tag }}
-          target_commitish: ${{ inputs.tag-target-commitish }}
-          make_latest: ${{ needs.check-latest.outputs.version == inputs.triggered-branch }}
-          generate_release_notes: true
-          draft: false
-          files: dist/*
