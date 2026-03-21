@@ -107,7 +107,11 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck and save to file
-        run: govulncheck -C . -format sarif ./... > report.sarif
+        run: |
+          govulncheck -C . -format sarif ./... > report.sarif
+          
+          # Workaround: govulncheck emits duplicate tags in SARIF rules, which upload-sarif rejects.
+          jq '(.runs[].tool.driver.rules // [])[] |= (.properties.tags |= unique)' report.sarif > report.tmp && mv report.tmp report.sarif
 
       - name: Upload to code-scanning
         uses: github/codeql-action/upload-sarif@v4
