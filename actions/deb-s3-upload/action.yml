@@ -140,8 +140,9 @@ runs:
           --bucket "${S3_BUCKET_NAME}"
           --component "${COMPONENT}"
           --codename "${CODENAME}"
+          --lock
         )
-        
+
         [[ -n "${AWS_REGION}" ]]                     && cmd+=(--s3-region "${AWS_REGION}")
         [[ "${S3_FORCE_PATH_STYLE}" == "true" ]]     && cmd+=(--force-path-style)
         
