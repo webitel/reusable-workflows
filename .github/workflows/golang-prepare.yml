@@ -34,7 +34,7 @@ jobs:
   version:
     name: Version
     if: inputs.only-dependencies != 'true'
-    uses: webitel/reusable-workflows/.github/workflows/_version.yml@v1.0.1
+    uses: webitel/reusable-workflows/.github/workflows/_version.yml@v1
     with:
       development-branch: ${{ inputs.development-branch }}
       triggered-branch: ${{ inputs.triggered-branch }}
