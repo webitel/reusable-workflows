@@ -52,7 +52,7 @@ runs:
   using: composite
   steps:
     - name: Create Github APP token
-      uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1.0.1
+      uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1
       id: app-token
       if: inputs.artifact-repository != ''
       with:
@@ -62,7 +62,7 @@ runs:
         repositories: ${{ inputs.artifact-repository }}
 
     - name: Download build artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: build-packages
         repository: ${{ inputs.artifact-repository != '' && format('{0}/{1}', inputs.artifact-repository-owner, inputs.artifact-repository) || '' }}
@@ -79,7 +79,7 @@ runs:
         target: ~/dist
 
     - name: Install package
-      uses: appleboy/ssh-action@v1.2.2
+      uses: appleboy/ssh-action@v1.2.5
       with:
         host: ${{ inputs.host }}
         username: ${{ inputs.user }}
