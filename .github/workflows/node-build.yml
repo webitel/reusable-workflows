@@ -131,7 +131,7 @@ jobs:
           prerelease: ${{ inputs.prerelease }}
           version-metadata: ${{ inputs.version-metadata }}
           contents: |
-            src=dist dst=${{ inputs.app-root }} type=tree
+            src=dist dst=${{ inputs.app-root }} type=dir
             ${{ inputs.package-contents }}
           scripts: ${{ inputs.scripts }}
           depends: ${{ inputs.package-depends }}
