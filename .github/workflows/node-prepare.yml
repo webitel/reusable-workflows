@@ -45,6 +45,10 @@ on:
         value: ${{ jobs.version.outputs.codename-matrix }}
         description: JSON array of Debian codenames
 
+      changes:
+        value: ${{ jobs.changes.outputs.changes }}
+        description: JSON array of changed categories (e.g., ["node", "dependencies", "workflows"])
+
 jobs:
   version:
     name: Version
@@ -55,6 +59,52 @@ jobs:
       triggered-branch: ${{ inputs.triggered-branch }}
       arch: ${{ inputs.arch }}
       codename: ${{ inputs.codename }}
+
+  changes:
+    name: Detect changes
+    runs-on: [ arc-runner-set ]
+    permissions: { pull-requests: read }
+    outputs:
+      changes: ${{ steps.build.outputs.changes }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            node:
+              - '**/*.js'
+              - '**/*.jsx'
+              - '**/*.ts'
+              - '**/*.tsx'
+              - '**/*.vue'
+              - '**/*.mjs'
+              - '**/*.cjs'
+            dependencies:
+              - 'package.json'
+              - 'package-lock.json'
+              - 'npm-shrinkwrap.json'
+            workflows:
+              - '.github/**'
+
+      - name: Build changes array
+        id: build
+        env:
+          NODE: ${{ steps.filter.outputs.node }}
+          DEPENDENCIES: ${{ steps.filter.outputs.dependencies }}
+          WORKFLOWS: ${{ steps.filter.outputs.workflows }}
+
+        run: |
+          changes='[]'
+          [[ "$NODE" == "true" ]]         && changes=$(echo "$changes" | jq -c '. + ["node"]')
+          [[ "$DEPENDENCIES" == "true" ]] && changes=$(echo "$changes" | jq -c '. + ["dependencies"]')
+          [[ "$WORKFLOWS" == "true" ]]    && changes=$(echo "$changes" | jq -c '. + ["workflows"]')
+
+          echo "changes=$changes" >> "$GITHUB_OUTPUT"
 
   dependencies:
     name: Dependencies

@@ -2,10 +2,17 @@ name: Checks
 
 on:
   workflow_call:
+    inputs:
+      changes:
+        type: string
+        required: false
+        default: '["node", "dependencies", "workflows"]'
+        description: JSON array of changed categories (e.g., ["node", "dependencies", "workflows"])
 
 jobs:
   lint:
     name: Lint code
+    if: contains(fromJSON(inputs.changes), 'node') || contains(fromJSON(inputs.changes), 'dependencies')
     runs-on: [ arc-frontend-runner-set ]
     permissions: { checks: write, pull-requests: write }
     continue-on-error: true
@@ -37,6 +44,7 @@ jobs:
 
   test:
     name: Unit testing
+    if: contains(fromJSON(inputs.changes), 'node') || contains(fromJSON(inputs.changes), 'dependencies')
     runs-on: [ arc-frontend-runner-set ]
     continue-on-error: true
     steps:
@@ -55,18 +63,96 @@ jobs:
         with:
           paths: test-results/tests.xml
 
+  audit:
+    name: Vulnerabilities
+    if: contains(fromJSON(inputs.changes), 'dependencies')
+    runs-on: [ arc-frontend-runner-set ]
+    permissions:
+      security-events: write
+
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: npm ci --install-links --install-strategy shallow
+
+      - name: Run npm audit
+        run: |
+          set +e
+          npm audit --json > audit.json
+          status=$?
+          set -e
+
+          if [[ $status -ne 0 && ! -s audit.json ]]; then
+            echo "npm audit failed to produce a report" >&2
+            exit $status
+          fi
+
+          [[ ! -s audit.json ]] && echo '{}' > audit.json
+
+      - name: Convert npm audit report to SARIF
+        id: sarif
+        uses: webitel/reusable-workflows/actions/npm-audit-sarif@v2
+        with:
+          audit-file: audit.json
+          sarif-file: report.sarif
+          fail-on: high
+
+      - name: Upload to code-scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: report.sarif
+          category: npm-audit
+
+      - name: Fail on high or critical vulnerabilities
+        if: always() && steps.sarif.outputs.has-failures == 'true'
+        run: |
+          echo "npm audit found ${{ steps.sarif.outputs.max-severity }} vulnerabilities" >&2
+          exit 1
+
+  codeql-matrix:
+    name: CodeQL matrix
+    runs-on: [ arc-runner-set ]
+    outputs:
+      languages: ${{ steps.build.outputs.languages }}
+
+    steps:
+      - name: Build CodeQL language matrix from changes
+        id: build
+        env:
+          CHANGES: ${{ inputs.changes }}
+
+        run: |
+          languages='[]'
+          if echo "$CHANGES" | jq -e 'any(. == "node" or . == "dependencies")' > /dev/null 2>&1; then
+            languages=$(echo "$languages" | jq -c '. + [{"language": "javascript", "build-mode": "none"}]')
+          fi
+
+          if echo "$CHANGES" | jq -e 'any(. == "workflows")' > /dev/null 2>&1; then
+            languages=$(echo "$languages" | jq -c '. + [{"language": "actions", "build-mode": "none"}]')
+          fi
+
+          echo "languages=$languages" >> "$GITHUB_OUTPUT"
+
+  # Dynamic matrix: only includes languages whose files actually changed.
   analyze:
     name: CodeQL analyze (${{ matrix.language }})
+    needs: [ codeql-matrix ]
     runs-on: [ arc-frontend-runner-set ]
-    if: ! github.event.repository.private
+    if: github.event.repository.private == false && needs.codeql-matrix.outputs.languages != '[]'
     permissions: { checks: write, security-events: write }
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - language: actions
-          - language: javascript
+        include: ${{ fromJSON(needs.codeql-matrix.outputs.languages) }}
 
     steps:
       - name: Checkout repository
@@ -76,16 +162,11 @@ jobs:
         if: matrix.language == 'javascript'
         run: npm ci --install-links --install-strategy shallow
 
-      # Initializes the CodeQL tools for scanning.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          build-mode: none
-          # If you wish to specify custom queries, you can do so here or in a config file.
-          # By default, queries listed here will override any specified in a config file.
-          # Prefix the list here with "+" to use these queries and those in the config file.
-          # queries: ./path/to/local/query, your-org/your-repo/queries@main
+          build-mode: ${{ matrix.build-mode }}
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
