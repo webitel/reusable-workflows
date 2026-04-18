@@ -122,6 +122,10 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: build-source-${{ inputs.arch }}
+          path: build-source
+
+      - name: Debug downloaded artifacts
+        run: find build-source -maxdepth 3 | sort
 
       - name: Build package
         id: build
@@ -140,7 +144,7 @@ jobs:
           prerelease: ${{ inputs.prerelease }}
           version-metadata: ${{ inputs.version-metadata }}
           contents: |
-            src=dist dst=${{ inputs.app-root }} type=tree
+            src=build-source/dist dst=${{ inputs.app-root }} type=tree
             ${{ inputs.package-contents }}
 
           scripts: ${{ inputs.scripts }}
