@@ -22,11 +22,17 @@ inputs:
     required: true
     description: Private SSH key for authentication
 
+  github-app-client-id:
+    required: false
+    description: |
+      Preferred GitHub App Client ID used to generate the installation token.
+      This is required when downloading artifacts from a different repository or from a different workflow run
+
   github-app-id:
     required: false
     description: |
-      Numeric ID of the GitHub App used to generate the installation token.
-      This is required when downloading artifacts from a different repository or from a different workflow run
+      Legacy GitHub App ID used to generate the installation token.
+      Prefer github-app-client-id. This is required when downloading artifacts from a different repository or from a different workflow run
 
   github-app-private-key:
     required: false
@@ -61,6 +67,7 @@ runs:
       id: app-token
       if: inputs.artifact-repository != ''
       with:
+        client-id: ${{ inputs.github-app-client-id }}
         app-id: ${{ inputs.github-app-id }}
         private-key: ${{ inputs.github-app-private-key }}
         owner: ${{ inputs.artifact-repository-owner }}

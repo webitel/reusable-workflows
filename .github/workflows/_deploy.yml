@@ -33,12 +33,19 @@ on:
         default: amd64
         description: Package architecture (e.g., amd64, arm64).
 
+      github-app-client-id:
+        type: string
+        required: false
+        description: |
+          Preferred GitHub App Client ID used to generate the installation token.
+          This is required when downloading artifacts from a different repository or from a different workflow run
+
       github-app-id:
         type: string
         required: false
         description: |
-          Numeric ID of the GitHub App used to generate the installation token.
-          This is required when downloading artifacts from a different repository or from a different workflow run
+          Legacy GitHub App ID used to generate the installation token.
+          Prefer github-app-client-id. This is required when downloading artifacts from a different repository or from a different workflow run
 
       artifact-repository-owner:
         type: string
@@ -72,6 +79,7 @@ jobs:
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_DEVELOPMENT }}
           user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
           private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
+          github-app-client-id: ${{ inputs.github-app-client-id }}
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.DELIVERY_BOT_APP_PEM }}
           artifact-repository: ${{ inputs.artifact-repository }}
@@ -93,6 +101,7 @@ jobs:
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_TESTING }}
           user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
           private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
+          github-app-client-id: ${{ inputs.github-app-client-id }}
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.DELIVERY_BOT_APP_PEM }}
           artifact-repository: ${{ inputs.artifact-repository }}
@@ -131,6 +140,7 @@ jobs:
           host: ${{ secrets.DEPLOYMENTS_SSH_HOST_STAGING }}
           user: ${{ secrets.DEPLOYMENTS_SSH_USER }}
           private-key: ${{ secrets.DEPLOYMENTS_SSH_PRIVATE_KEY }}
+          github-app-client-id: ${{ inputs.github-app-client-id }}
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.DELIVERY_BOT_APP_PEM }}
           artifact-repository: ${{ inputs.artifact-repository }}

@@ -8,10 +8,15 @@ on:
       app-pem: { required: true }
 
     inputs:
+      client-id:
+        type: string
+        required: false
+        description: Preferred GitHub App Client ID used to generate the installation token.
+
       app-id:
         type: string
-        required: true
-        description: Numeric ID of the GitHub App used to generate the installation token.
+        required: false
+        description: Legacy GitHub App ID used to generate the installation token. Prefer client-id.
 
 jobs:
   perform:
@@ -26,6 +31,7 @@ jobs:
         uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1
         id: app-token
         with:
+          client-id: ${{ inputs.client-id }}
           app-id: ${{ inputs.app-id }}
           private-key: ${{ secrets.app-pem }}
 

@@ -59,12 +59,19 @@ on:
         default: false
         description: Force path style URLs instead of subdomain-based (required for most S3-compatible storages like MinIO).
 
+      github-app-client-id:
+        type: string
+        required: false
+        description: |
+          Preferred GitHub App Client ID used to generate the installation token.
+          This is required when downloading artifacts from a different repository or from a different workflow run.
+
       github-app-id:
         type: string
         required: false
         description: |
-          Numeric ID of the GitHub App used to generate the installation token.
-          This is required when downloading artifacts from a different repository or from a different workflow run.
+          Legacy GitHub App ID used to generate the installation token.
+          Prefer github-app-client-id. This is required when downloading artifacts from a different repository or from a different workflow run.
 
       artifact-repository-owner:
         type: string
@@ -104,6 +111,7 @@ jobs:
           s3-secret-key: ${{ secrets.DEB_S3_SECRET_ACCESS_KEY }}
           gpg-private-key: ${{ secrets.REPO_SIGNING_KEY }}
           gpg-passphrase: ${{ secrets.REPO_SIGNING_KEY_PASSPHRASE }}
+          github-app-client-id: ${{ inputs.github-app-client-id }}
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.DELIVERY_BOT_APP_PEM }}
           artifact-repository: ${{ inputs.artifact-repository }}
