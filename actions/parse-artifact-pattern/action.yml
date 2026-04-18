@@ -1,0 +1,121 @@
+name: Parse artifact pattern
+description: Parse package contents or scripts into an artifact upload pattern
+author: Webitel
+
+inputs:
+  parser:
+    required: true
+    description: "Parser kind. Supported values: package-contents, scripts"
+
+  content:
+    required: true
+    description: Raw input content to parse
+
+outputs:
+  upload-pattern:
+    description: Newline-separated list of paths to upload
+    value: ${{ steps.parse-package-contents.outputs.upload-pattern || steps.parse-scripts.outputs.upload-pattern }}
+
+runs:
+  using: composite
+  steps:
+    - name: Parse package contents
+      id: parse-package-contents
+      if: inputs.parser == 'package-contents'
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const content = `${{ inputs.content }}`.trim();
+
+          core.startGroup('Parsing Package Contents');
+          core.info('Raw package contents:');
+          core.info(content);
+
+          const artifactPaths = content
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0)
+            .map(line => {
+              const srcMatch = line.match(/src=([^\s]+)/);
+              const typeMatch = line.match(/type=([^\s]+)/);
+
+              return {
+                src: srcMatch ? srcMatch[1] : null,
+                type: typeMatch ? typeMatch[1] : null,
+                line: line
+              };
+            })
+            .filter(item => {
+              if (!item.src) {
+                core.warning(`Skipping invalid line (missing src): ${item.line}`);
+                return false;
+              }
+
+              if (item.type === 'symlink') {
+                core.info(`Skipping symlink: ${item.src}`);
+                return false;
+              }
+
+              core.info(`Including file: ${item.src}${item.type ? ` (type: ${item.type})` : ' (type not specified)'}`);
+              return true;
+            })
+            .map(item => item.src);
+
+          const uploadPattern = [...new Set(artifactPaths)].join('\n');
+
+          core.info('Generated artifact upload pattern:');
+          core.info(uploadPattern || '(no artifacts to upload)');
+          core.endGroup();
+
+          core.setOutput('upload-pattern', uploadPattern);
+
+    - name: Parse scripts
+      id: parse-scripts
+      if: inputs.parser == 'scripts'
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const content = `${{ inputs.content }}`.trim();
+
+          core.startGroup('Parsing Scripts');
+          core.info('Raw scripts:');
+          core.info(content);
+
+          const scriptPaths = content
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0)
+            .map(line => {
+              const match = line.match(/^([^:]+):\s*(.+)$/);
+
+              return {
+                type: match ? match[1].trim() : null,
+                path: match ? match[2].trim() : null,
+                line: line
+              };
+            })
+            .filter(item => {
+              if (!item.type || !item.path) {
+                core.warning(`Skipping invalid line (missing type or path): ${item.line}`);
+                return false;
+              }
+
+              core.info(`Including script: ${item.path} (type: ${item.type})`);
+              return true;
+            })
+            .map(item => item.path);
+
+          const uploadPattern = [...new Set(scriptPaths)].join('\n');
+
+          core.info('Generated scripts upload pattern:');
+          core.info(uploadPattern || '(no scripts to upload)');
+          core.endGroup();
+
+          core.setOutput('upload-pattern', uploadPattern);
+
+    - name: Validate parser
+      if: inputs.parser != 'package-contents' && inputs.parser != 'scripts'
+      shell: bash
+      run: |
+        echo "Unsupported parser: ${{ inputs.parser }}" >&2
+        exit 1
