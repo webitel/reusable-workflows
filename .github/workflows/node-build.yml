@@ -124,9 +124,6 @@ jobs:
           name: build-source-${{ inputs.arch }}
           path: build-source
 
-      - name: Debug downloaded artifacts
-        run: find build-source -maxdepth 3 | sort
-
       - name: Build package
         id: build
         uses: webitel/reusable-workflows/actions/nfpm-build@nfpm-build-v2
@@ -144,7 +141,7 @@ jobs:
           prerelease: ${{ inputs.prerelease }}
           version-metadata: ${{ inputs.version-metadata }}
           contents: |
-            src=build-source/dist dst=${{ inputs.app-root }} type=tree
+            src=build-source dst=${{ inputs.app-root }} type=tree
             ${{ inputs.package-contents }}
 
           scripts: ${{ inputs.scripts }}
