@@ -118,7 +118,7 @@ inputs:
       Example: 
       ```
         contents: |
-          src=path dst=/path type=file|config|dir
+          src=path dst=/path type=file|config|dir|tree
           src=./config.conf dst=/etc/app/config.conf type=config mode=0644 owner=app group=app
       
         contents: |

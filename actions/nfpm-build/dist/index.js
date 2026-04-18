@@ -33765,8 +33765,8 @@ class ContentFileParser {
                     file.file_info.group = cleanValue;
                     break;
                 case 'type':
-                    if (!['file', 'dir', 'config', 'symlink'].includes(cleanValue)) {
-                        throw new Error(`Invalid type "${cleanValue}". Must be one of: file, dir, config, symlink`);
+                    if (!['file', 'dir', 'config', 'symlink', 'tree'].includes(cleanValue)) {
+                        throw new Error(`Invalid type "${cleanValue}". Must be one of: file, dir, config, symlink, tree`);
                     }
                     file.type = cleanValue;
                     break;

@@ -51,7 +51,7 @@ src=./config.conf dst=/etc/app/config.conf type=config mode=0644 owner=app group
             expect(result[0].src).toBe('./my app');
             expect(result[0].dst).toBe('/usr/bin/my app');
             expect(result[0].type).toBe('file');
-            expect(result[0].file_info?.mode).toBe('0755');
+            expect(result[0].file_info?.mode).toBe(493);
         });
 
         it('should handle files without file_info properties', () => {
@@ -74,6 +74,19 @@ src=./config.conf dst=/etc/app/config.conf type=config mode=0644 owner=app group
             expect(() => ContentFileParser.parse(input)).toThrow('Invalid type "invalid"');
         });
 
+        it('should parse tree type correctly', () => {
+            const input = `src=./dist dst=/opt/www/app type=tree`;
+
+            const result = ContentFileParser.parse(input);
+
+            expect(result).toHaveLength(1);
+            expect(result[0]).toEqual({
+                src: './dist',
+                dst: '/opt/www/app',
+                type: 'tree'
+            });
+        });
+
         it('should throw error for missing required properties', () => {
             const input = `src=./app mode=0755`; // missing dst
 
@@ -86,7 +99,7 @@ src=./config.conf dst=/etc/app/config.conf type=config mode=0644 owner=app group
             const result = ContentFileParser.parse(input);
 
             expect(result).toHaveLength(1);
-            expect(result[0].type).toBe('file');
+            expect(result[0].type).toBeUndefined();
         });
     });
 

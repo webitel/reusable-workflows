@@ -5,7 +5,7 @@ import {promises as fs} from "fs";
 export interface ContentFile {
     src: string;
     dst: string;
-    type?: 'file' | 'dir' | 'config' | 'symlink';
+    type?: 'file' | 'dir' | 'config' | 'symlink' | 'tree';
     file_info?: {
         mode?: number;
         owner?: string;
@@ -202,10 +202,10 @@ export class ContentFileParser {
                     file.file_info.group = cleanValue;
                     break;
                 case 'type':
-                    if (!['file', 'dir', 'config', 'symlink'].includes(cleanValue)) {
-                        throw new Error(`Invalid type "${cleanValue}". Must be one of: file, dir, config, symlink`);
+                    if (!['file', 'dir', 'config', 'symlink', 'tree'].includes(cleanValue)) {
+                        throw new Error(`Invalid type "${cleanValue}". Must be one of: file, dir, config, symlink, tree`);
                     }
-                    file.type = cleanValue as 'file' | 'dir' | 'config' | 'symlink';
+                    file.type = cleanValue as 'file' | 'dir' | 'config' | 'symlink' | 'tree';
                     break;
                 default:
                     core.warning(`Unknown key "${key}" in content file definition`);

@@ -140,7 +140,7 @@ jobs:
           prerelease: ${{ inputs.prerelease }}
           version-metadata: ${{ inputs.version-metadata }}
           contents: |
-            src=dist dst=${{ inputs.app-root }} type=dir
+            src=dist dst=${{ inputs.app-root }} type=tree
             ${{ inputs.package-contents }}
 
           scripts: ${{ inputs.scripts }}

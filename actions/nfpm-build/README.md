@@ -123,7 +123,7 @@ contents: |
 
 - `src` (required): Source file or directory path
 - `dst` (required): Destination path in the package
-- `type` (optional): Content type - `file`, `config`, `dir`, or `symlink` (default: `file`)
+- `type` (optional): Content type - `file`, `config`, `dir`, `tree`, or `symlink` (default: `file`)
 - `mode` (optional): File permissions in octal format (e.g., `0755`)
 - `owner` (optional): File owner (default: `root`)
 - `group` (optional): File group (default: `root`)
@@ -133,6 +133,7 @@ contents: |
 - `file`: Regular file
 - `config`: Configuration file (handled specially by package managers)
 - `dir`: Directory
+- `tree`: Recursively copy a directory tree into the package
 - `symlink`: Symbolic link
 
 ## Package Formats
