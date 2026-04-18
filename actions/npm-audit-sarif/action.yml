@@ -1,0 +1,43 @@
+name: Convert npm audit JSON to SARIF
+description: Convert npm audit JSON output to SARIF and evaluate a failure threshold.
+
+inputs:
+  audit-file:
+    required: true
+    description: Path to the npm audit JSON report.
+
+  sarif-file:
+    required: false
+    default: report.sarif
+    description: Destination path for the generated SARIF report.
+
+  fail-on:
+    required: false
+    default: high
+    description: Minimum severity that should fail the audit gate (none, info, low, moderate, high, critical).
+
+outputs:
+  has-failures:
+    description: Whether the report contains vulnerabilities at or above the configured threshold.
+    value: ${{ steps.convert.outputs.has-failures }}
+
+  max-severity:
+    description: Highest vulnerability severity found in the report.
+    value: ${{ steps.convert.outputs.max-severity }}
+
+  result-count:
+    description: Number of SARIF results emitted.
+    value: ${{ steps.convert.outputs.result-count }}
+
+runs:
+  using: composite
+  steps:
+    - name: Convert report
+      id: convert
+      shell: bash
+      env:
+        INPUT_AUDIT_FILE: ${{ inputs.audit-file }}
+        INPUT_SARIF_FILE: ${{ inputs.sarif-file }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+
+      run: node "$GITHUB_ACTION_PATH/index.js"
