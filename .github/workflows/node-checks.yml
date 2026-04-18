@@ -94,7 +94,9 @@ jobs:
             exit $status
           fi
 
-          [[ ! -s audit.json ]] && echo '{}' > audit.json
+          if [[ ! -s audit.json ]]; then
+            echo '{}' > audit.json
+          fi
 
       - name: Convert npm audit report to SARIF
         id: sarif
