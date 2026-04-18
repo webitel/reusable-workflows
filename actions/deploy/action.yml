@@ -59,6 +59,12 @@ inputs:
     default: amd64
     description: Package architecture (e.g., amd64, arm64)
 
+  install-lock-timeout:
+    required: false
+    default: "900"
+    description: |
+      How many seconds apt-get should wait for the package manager lock before failing
+
 runs:
   using: composite
   steps:
@@ -97,5 +103,12 @@ runs:
         username: ${{ inputs.user }}
         key: ${{ inputs.private-key }}
         script: |
-          sudo DEBIAN_FRONTEND=noninteractive dpkg --install --force-confold ~/dist/${{ inputs.source }}
-          rm ~/dist/${{ inputs.source }}
+          set -eu
+
+          package_path="$HOME/dist/${{ inputs.source }}"
+          lock_timeout="${{ inputs.install-lock-timeout }}"
+
+          sudo DEBIAN_FRONTEND=noninteractive \
+            apt-get -o DPkg::Lock::Timeout="${lock_timeout}" install -y "${package_path}"
+
+          rm -f "${package_path}"
