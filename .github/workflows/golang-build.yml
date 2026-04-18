@@ -129,107 +129,18 @@ jobs:
       - name: Parse package contents for upload
         id: parse-upload-pattern
         if: inputs.package-contents != ''
-        uses: actions/github-script@v8
+        uses: webitel/reusable-workflows/actions/parse-artifact-pattern@parse-artifact-pattern-v1.0.0
         with:
-          script: |
-            const packageContents = `${{ inputs.package-contents }}`.trim();
-            
-            core.startGroup('Parsing Package Contents');
-            core.info('Raw package contents:');
-            core.info(packageContents);
-            
-            // Parse package contents and extract src paths
-            const artifactPaths = packageContents
-              .split('\n')
-              .map(line => line.trim())
-              .filter(line => line.length > 0)
-              .map(line => {
-                const srcMatch = line.match(/src=([^\s]+)/);
-                const typeMatch = line.match(/type=([^\s]+)/);
-            
-                return {
-                  src: srcMatch ? srcMatch[1] : null,
-                  type: typeMatch ? typeMatch[1] : null,
-                  line: line
-                };
-              })
-              .filter(item => {
-                if (!item.src) {
-                  core.warning(`Skipping invalid line (missing src): ${item.line}`);
-                  return false;
-                }
-            
-                if (item.type === 'symlink') {
-                  core.info(`Skipping symlink: ${item.src}`);
-                  return false;
-                }
-            
-                // Include files regardless of type or missing type
-                core.info(`✓ Including file: ${item.src}${item.type ? ` (type: ${item.type})` : ' (type not specified)'}`);
-                return true;
-              })
-              .map(item => item.src);
-            
-            // Remove duplicates
-            const uniquePaths = [...new Set(artifactPaths)];
-            
-            // Create the upload pattern
-            const uploadPattern = uniquePaths.join('\n');
-            
-            core.info('Generated artifact upload pattern:');
-            core.info(uploadPattern || '(no artifacts to upload)');
-            core.endGroup();
-            
-            // Set outputs
-            core.setOutput('upload-pattern', uploadPattern);
+          parser: package-contents
+          content: ${{ inputs.package-contents }}
 
       - name: Parse scripts for upload
         id: parse-scripts-pattern
         if: inputs.scripts != ''
-        uses: actions/github-script@v8
+        uses: webitel/reusable-workflows/actions/parse-artifact-pattern@parse-artifact-pattern-v1.0.0
         with:
-          script: |
-            const scripts = `${{ inputs.scripts }}`.trim();
-            
-            core.startGroup('Parsing Scripts');
-            core.info('Raw scripts:');
-            core.info(scripts);
-            
-            const scriptPaths = scripts
-              .split('\n')
-              .map(line => line.trim())
-              .filter(line => line.length > 0)
-              .map(line => {
-                // Match pattern: "scripttype: path/to/script.sh"
-                const match = line.match(/^([^:]+):\s*(.+)$/);
-            
-                return {
-                  type: match ? match[1].trim() : null,
-                  path: match ? match[2].trim() : null,
-                  line: line
-                };
-              })
-              .filter(item => {
-                if (!item.type || !item.path) {
-                  core.warning(`Skipping invalid line (missing type or path): ${item.line}`);
-                  
-                  return false;
-                }
-            
-                core.info(`✓ Including script: ${item.path} (type: ${item.type})`);
-                
-                return true;
-              })
-              .map(item => item.path);
-            
-            const uniquePaths = [...new Set(scriptPaths)];
-            const uploadPattern = uniquePaths.join('\n');
-            
-            core.info('Generated scripts upload pattern:');
-            core.info(uploadPattern || '(no scripts to upload)');
-            core.endGroup();
-            
-            core.setOutput('upload-pattern', uploadPattern);
+          parser: scripts
+          content: ${{ inputs.scripts }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

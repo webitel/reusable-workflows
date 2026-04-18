@@ -28,6 +28,11 @@ on:
         type: string
         required: true
 
+      app-root:
+        type: string
+        required: true
+        description: Absolute target directory where built frontend assets will be installed
+
       package-contents:
         type: string
         required: true
@@ -71,6 +76,22 @@ jobs:
       - name: Build application
         run: npm run build
 
+      - name: Parse package contents for upload
+        id: parse-upload-pattern
+        if: inputs.package-contents != ''
+        uses: webitel/reusable-workflows/actions/parse-artifact-pattern@parse-artifact-pattern-v1.0.0
+        with:
+          parser: package-contents
+          content: ${{ inputs.package-contents }}
+
+      - name: Parse scripts for upload
+        id: parse-scripts-pattern
+        if: inputs.scripts != ''
+        uses: webitel/reusable-workflows/actions/parse-artifact-pattern@parse-artifact-pattern-v1.0.0
+        with:
+          parser: scripts
+          content: ${{ inputs.scripts }}
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -80,6 +101,8 @@ jobs:
           include-hidden-files: true
           path: |
             dist
+            ${{ steps.parse-upload-pattern.outputs.upload-pattern }}
+            ${{ steps.parse-scripts-pattern.outputs.upload-pattern }}
 
   build:
     name: Package
@@ -90,14 +113,13 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: build-source-${{ inputs.arch }}
-          path: build-source
 
       - name: Build package
         id: build
         uses: webitel/reusable-workflows/actions/nfpm-build@nfpm-build-v2
         with:
           formats: deb
-          target: dist
+          target: packages
           maintainer: Webitel <support@webitel.com>
           homepage: https://webitel.com
           arch: ${{ inputs.arch }}
@@ -108,7 +130,9 @@ jobs:
           release: ${{ inputs.version-build }}
           prerelease: ${{ inputs.prerelease }}
           version-metadata: ${{ inputs.version-metadata }}
-          contents: ${{ inputs.package-contents }}
+          contents: |
+            src=dist dst=${{ inputs.app-root }} type=tree
+            ${{ inputs.package-contents }}
           scripts: ${{ inputs.scripts }}
           depends: ${{ inputs.package-depends }}
 
@@ -118,4 +142,4 @@ jobs:
           name: build-packages-${{ inputs.arch }}
           retention-days: 7
           compression-level: 9
-          path: dist
+          path: packages
