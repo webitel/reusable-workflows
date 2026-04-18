@@ -1,7 +1,11 @@
 inputs:
+  client-id:
+    required: false
+    description: Preferred GitHub App Client ID used to generate the installation token.
+
   app-id:
-    required: true
-    description: Numeric ID of the GitHub App used to generate the installation token.
+    required: false
+    description: Legacy GitHub App ID used to generate the installation token. Prefer client-id.
 
   private-key:
     required: true
@@ -17,7 +21,7 @@ inputs:
 
 outputs:
   token:
-    value: ${{ steps.app-token.outputs.token }}
+    value: ${{ steps.app-token-client.outputs.token || steps.app-token-app-id.outputs.token }}
     description: GitHub App installation token to authenticate API calls and git operations.
 
   user-name:
@@ -31,9 +35,28 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Validate token inputs
+      shell: bash
+      run: |
+        if [[ -z "${{ inputs.client-id }}" && -z "${{ inputs.app-id }}" ]]; then
+          echo "Either 'client-id' or legacy 'app-id' input must be provided." >&2
+          exit 1
+        fi
+
     - name: Create Github APP token
+      if: inputs.client-id != ''
       uses: actions/create-github-app-token@v3
-      id: app-token
+      id: app-token-client
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ inputs.owner }}
+        repositories: ${{ inputs.repositories }}
+
+    - name: Create Github APP token (legacy app-id)
+      if: inputs.client-id == '' && inputs.app-id != ''
+      uses: actions/create-github-app-token@v3
+      id: app-token-app-id
       with:
         app-id: ${{ inputs.app-id }}
         private-key: ${{ inputs.private-key }}
@@ -43,14 +66,18 @@ runs:
     - name: Get GitHub App User ID
       id: get-user-id
       env:
-        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        GH_TOKEN: ${{ steps.app-token-client.outputs.token || steps.app-token-app-id.outputs.token }}
+        APP_SLUG: ${{ steps.app-token-client.outputs.app-slug || steps.app-token-app-id.outputs.app-slug }}
 
       shell: bash
-      run: echo "user-id=$(gh api "/users/${{ steps.app-token.outputs.app-slug }}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
+      run: echo "user-id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
 
     - name: Configure git user
       id: git-user
+      env:
+        APP_SLUG: ${{ steps.app-token-client.outputs.app-slug || steps.app-token-app-id.outputs.app-slug }}
+
       shell: bash
       run: |
-        echo "name=${{ steps.app-token.outputs.app-slug }}[bot]" >> "$GITHUB_OUTPUT"
-        echo "email=${{ steps.get-user-id.outputs.user-id }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+        echo "name=${APP_SLUG}[bot]" >> "$GITHUB_OUTPUT"
+        echo "email=${{ steps.get-user-id.outputs.user-id }}+${APP_SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
