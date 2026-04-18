@@ -105,10 +105,16 @@ runs:
         script: |
           set -eu
 
-          package_path="$HOME/dist/${{ inputs.source }}"
+          package_dir="$HOME/dist"
           lock_timeout="${{ inputs.install-lock-timeout }}"
 
-          sudo DEBIAN_FRONTEND=noninteractive \
-            apt-get -o DPkg::Lock::Timeout="${lock_timeout}" install -y "${package_path}"
+          set -- "${package_dir}"/${{ inputs.source }}
+          if [ "$1" = "${package_dir}/${{ inputs.source }}" ] && [ ! -e "$1" ]; then
+            echo "No package matched pattern: $1" >&2
+            exit 1
+          fi
 
-          rm -f "${package_path}"
+          sudo DEBIAN_FRONTEND=noninteractive \
+            apt-get -o DPkg::Lock::Timeout="${lock_timeout}" install -y "$@"
+
+          rm -f "$@"
