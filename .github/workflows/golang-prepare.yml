@@ -42,6 +42,10 @@ on:
         value: ${{ jobs.version.outputs.version }}
         description: Extracted version
 
+      build-timestamp:
+        value: ${{ jobs.version.outputs.build-timestamp }}
+        description: UTC build timestamp in ISO-8601 format
+
       arch-matrix:
         value: ${{ jobs.version.outputs.arch-matrix }}
         description: JSON array of target architectures

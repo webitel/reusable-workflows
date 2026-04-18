@@ -32,6 +32,10 @@ on:
         value: ${{ jobs.parse.outputs.version }}
         description: Extracted version
 
+      build-timestamp:
+        value: ${{ jobs.parse.outputs.build-timestamp }}
+        description: UTC build timestamp in ISO-8601 format
+
       arch-matrix:
         value: ${{ jobs.parse.outputs.arch }}
         description: JSON array of target architectures
@@ -46,20 +50,27 @@ jobs:
     runs-on: [ arc-runner-set ]
     outputs:
       version: ${{ steps.version.outputs.version }}
+      build-timestamp: ${{ steps.metadata.outputs.build-timestamp }}
       arch: ${{ steps.matrix.outputs.arch }}
       codename: ${{ steps.matrix.outputs.codename }}
 
     steps:
+      - name: Generate build metadata
+        id: metadata
+        shell: bash
+        run: echo "build-timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Parse build matrix
         id: matrix
         shell: bash
+        env:
+          ARCH: ${{ inputs.arch }}
+          CODENAME: ${{ inputs.codename }}
+
         run: |
           to_json() { echo "$1" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -v '^$' | jq -Rc . | jq -sc .; }
           echo "arch=$(to_json "$ARCH")" >> "$GITHUB_OUTPUT"
           echo "codename=$(to_json "$CODENAME")" >> "$GITHUB_OUTPUT"
-        env:
-          ARCH: ${{ inputs.arch }}
-          CODENAME: ${{ inputs.codename }}
 
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -77,6 +88,7 @@ jobs:
           DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
           TRIGGERED_BRANCH: ${{ inputs.triggered-branch }}
           LATEST_RELEASE_BRANCH: ${{ steps.latest-release-branch.outputs.version }}
+
         with:
           script: |
             const developmentBranch = process.env.DEVELOPMENT_BRANCH;

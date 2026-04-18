@@ -12,6 +12,11 @@ on:
         required: true
         type: string
 
+      build-timestamp:
+        required: true
+        type: string
+        description: UTC build timestamp in ISO-8601 format
+
       version-metadata:
         type: string
         required: false
@@ -74,6 +79,10 @@ jobs:
         run: npm ci --install-links --install-strategy shallow
 
       - name: Build application
+        env:
+          VITE_BUILD_NUMBER: ${{ inputs.version-build }}
+          VITE_BUILD_TIMESTAMP: ${{ inputs.build-timestamp }}
+
         run: npm run build
 
       - name: Parse package contents for upload
@@ -133,6 +142,7 @@ jobs:
           contents: |
             src=dist dst=${{ inputs.app-root }} type=dir
             ${{ inputs.package-contents }}
+
           scripts: ${{ inputs.scripts }}
           depends: ${{ inputs.package-depends }}
 
