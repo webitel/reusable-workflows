@@ -115,6 +115,6 @@ runs:
           fi
 
           sudo DEBIAN_FRONTEND=noninteractive \
-            apt-get -o DPkg::Lock::Timeout="${lock_timeout}" install -y "$@"
+            apt-get -o DPkg::Lock::Timeout="${lock_timeout}" install -y --allow-downgrades "$@"
 
           rm -f "$@"
