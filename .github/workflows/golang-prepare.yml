@@ -72,7 +72,6 @@ jobs:
   changes:
     name: Detect changes
     runs-on: [ arc-runner-set ]
-    permissions: { pull-requests: read }
     outputs:
       changes: ${{ steps.build.outputs.changes }}
 

@@ -14,7 +14,11 @@ jobs:
     name: Lint code
     if: contains(fromJSON(inputs.changes), 'node') || contains(fromJSON(inputs.changes), 'dependencies')
     runs-on: [ arc-frontend-runner-set ]
-    permissions: { checks: write, pull-requests: write }
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+
     continue-on-error: true
     steps:
       - name: Checkout repository
