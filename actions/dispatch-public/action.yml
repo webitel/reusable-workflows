@@ -1,0 +1,55 @@
+name: Dispatch public workflow
+description: Triggers a workflow in the paired public repository and waits for completion, propagating its status.
+
+inputs:
+  workflow-name:
+    required: true
+    description: Target workflow name in the public repository (e.g., "Workflow (webitel-core)").
+
+  repository:
+    required: true
+    description: Public repository in owner/name form (e.g., webitel/webitel.go-public).
+
+  ref:
+    required: false
+    default: main
+    description: Ref of the target workflow to dispatch.
+
+  dispatch-inputs:
+    required: true
+    description: JSON object with inputs passed to the dispatched workflow.
+
+  wait-timeout-seconds:
+    required: false
+    default: "7200"
+    description: How long to wait for the dispatched workflow to finish.
+
+  github-app-client-id:
+    required: true
+    description: GitHub App client id used to mint an installation token.
+
+  github-app-private-key:
+    required: true
+    description: PEM-encoded private key for the GitHub App.
+
+runs:
+  using: composite
+  steps:
+    - name: Create Github APP token
+      uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1
+      id: app-token
+      with:
+        client-id: ${{ inputs.github-app-client-id }}
+        private-key: ${{ inputs.github-app-private-key }}
+
+    - name: Dispatch workflow
+      uses: benc-uk/workflow-dispatch@v1
+      with:
+        workflow: ${{ inputs.workflow-name }}
+        repo: ${{ inputs.repository }}
+        ref: ${{ inputs.ref }}
+        token: ${{ steps.app-token.outputs.token }}
+        inputs: ${{ inputs.dispatch-inputs }}
+        wait-for-completion: true
+        wait-timeout-seconds: ${{ inputs.wait-timeout-seconds }}
+        sync-status: true
