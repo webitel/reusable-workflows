@@ -50,6 +50,7 @@ runs:
         repositories: ${{ inputs.repository-name }}
 
     - name: Dispatch workflow
+      id: dispatch
       uses: benc-uk/workflow-dispatch@v1
       with:
         workflow: ${{ inputs.workflow-name }}
@@ -60,3 +61,17 @@ runs:
         wait-for-completion: true
         wait-timeout-seconds: ${{ inputs.wait-timeout-seconds }}
         sync-status: true
+
+    - name: Write summary
+      if: always() && steps.dispatch.outputs.runUrlHtml != ''
+      shell: bash
+      env:
+        WORKFLOW_NAME: ${{ inputs.workflow-name }}
+        RUN_URL: ${{ steps.dispatch.outputs.runUrlHtml }}
+
+      run: |
+        {
+          echo "### Dispatched: ${WORKFLOW_NAME}"
+          echo ""
+          echo "- Run: ${RUN_URL}"
+        } >> "$GITHUB_STEP_SUMMARY"
