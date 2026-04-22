@@ -108,6 +108,7 @@ jobs:
   codeql-matrix:
     name: CodeQL matrix
     runs-on: [ arc-runner-set ]
+    if: github.event.repository.private == false
     outputs:
       languages: ${{ steps.build.outputs.languages }}
 
