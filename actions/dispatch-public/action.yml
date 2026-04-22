@@ -6,9 +6,14 @@ inputs:
     required: true
     description: Target workflow name in the public repository (e.g., "Workflow (webitel-core)").
 
-  repository:
+  repository-owner:
     required: true
-    description: Public repository in owner/name form (e.g., webitel/webitel.go-public).
+    default: webitel
+    description: Owner of the target repository (e.g., webitel).
+
+  repository-name:
+    required: true
+    description: Name of the target repository (e.g., webitel.go-public).
 
   ref:
     required: false
@@ -41,12 +46,14 @@ runs:
       with:
         client-id: ${{ inputs.github-app-client-id }}
         private-key: ${{ inputs.github-app-private-key }}
+        owner: ${{ inputs.repository-owner }}
+        repositories: ${{ inputs.repository-name }}
 
     - name: Dispatch workflow
       uses: benc-uk/workflow-dispatch@v1
       with:
         workflow: ${{ inputs.workflow-name }}
-        repo: ${{ inputs.repository }}
+        repo: ${{ inputs.repository-owner }}/${{ inputs.repository-name }}
         ref: ${{ inputs.ref }}
         token: ${{ steps.app-token.outputs.token }}
         inputs: ${{ inputs.dispatch-inputs }}
