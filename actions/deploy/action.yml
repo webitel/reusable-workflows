@@ -115,6 +115,10 @@ runs:
           fi
 
           sudo DEBIAN_FRONTEND=noninteractive \
-            apt-get -o DPkg::Lock::Timeout="${lock_timeout}" install -y --allow-downgrades "$@"
+            apt-get \
+              -o DPkg::Lock::Timeout="${lock_timeout}" \
+              -o Dpkg::Options::=--force-confdef \
+              -o Dpkg::Options::=--force-confold \
+              install -y --allow-downgrades "$@"
 
           rm -f "$@"
