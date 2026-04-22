@@ -58,9 +58,9 @@ runs:
         ref: ${{ inputs.ref }}
         token: ${{ steps.app-token.outputs.token }}
         inputs: ${{ inputs.dispatch-inputs }}
-        wait-for-completion: true
-        wait-timeout-seconds: ${{ inputs.wait-timeout-seconds }}
-        sync-status: true
+        # wait-for-completion: true
+        # wait-timeout-seconds: ${{ inputs.wait-timeout-seconds }}
+        # sync-status: true
 
     - name: Write summary
       if: always() && steps.dispatch.outputs.runUrlHtml != ''
