@@ -68,6 +68,21 @@ on:
           Package contents specification in nFPM format.
           See: https://github.com/webitel/reusable-workflows/tree/main/actions/nfpm-build-action#contents-format
 
+      package-depends:
+        type: string
+        required: false
+        description: Package dependencies (comma-separated)
+
+      scripts:
+        type: string
+        required: false
+        description: |
+          Scripts to run at specific stages (preinstall, postinstall, preremove, postremove).
+          Example:
+          ```
+            postinstall: ./scripts/postinstall.sh
+          ```
+
 jobs:
   compile:
     name: Module
@@ -94,15 +109,25 @@ jobs:
       - name: Compile
         run: cmake --build build -j ${{ steps.parallel.outputs.jobs }} ${{ inputs.build-args }}
 
+      - name: Parse scripts for upload
+        id: parse-scripts-pattern
+        if: inputs.scripts != ''
+        uses: webitel/reusable-workflows/actions/parse-artifact-pattern@parse-artifact-pattern-v1.0.0
+        with:
+          parser: scripts
+          content: ${{ inputs.scripts }}
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
           name: build-source
           retention-days: 1
           compression-level: 9
+          include-hidden-files: true
           path: |
             dummy-file-to-keep-directory-structure.txt
             ${{ inputs.upload-artifact-pattern }}
+            ${{ steps.parse-scripts-pattern.outputs.upload-pattern }}
 
   build:
     name: Package
@@ -132,6 +157,8 @@ jobs:
           prerelease: ${{ inputs.prerelease }}
           version-metadata: ${{ inputs.version-metadata }}
           contents: ${{ inputs.package-contents }}
+          scripts: ${{ inputs.scripts }}
+          depends: ${{ inputs.package-depends }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
