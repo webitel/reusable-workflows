@@ -50,6 +50,21 @@ on:
         required: false
         description: Package dependencies (comma-separated)
 
+      package-conflicts:
+        type: string
+        required: false
+        description: Packages this package conflicts with (comma-separated)
+
+      package-replaces:
+        type: string
+        required: false
+        description: Packages this package replaces (comma-separated)
+
+      package-provides:
+        type: string
+        required: false
+        description: Virtual or legacy packages this package provides (comma-separated)
+
       scripts:
         type: string
         required: false
@@ -146,6 +161,9 @@ jobs:
 
           scripts: ${{ inputs.scripts }}
           depends: ${{ inputs.package-depends }}
+          conflicts: ${{ inputs.package-conflicts }}
+          replaces: ${{ inputs.package-replaces }}
+          provides: ${{ inputs.package-provides }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
