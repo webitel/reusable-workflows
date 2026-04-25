@@ -50,7 +50,7 @@ inputs:
     description: Base64-encoded GPG private key used for signing
 
   gpg-passphrase:
-    required: true
+    required: false
     description: Passphrase for the GPG private key
 
   github-app-client-id:

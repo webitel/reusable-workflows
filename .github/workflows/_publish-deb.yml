@@ -6,7 +6,7 @@ on:
       DEB_S3_ACCESS_KEY_ID: { required: true }
       DEB_S3_SECRET_ACCESS_KEY: { required: true }
       REPO_SIGNING_KEY: { required: true }
-      REPO_SIGNING_KEY_PASSPHRASE: { required: true }
+      REPO_SIGNING_KEY_PASSPHRASE: { required: false }
       DELIVERY_BOT_APP_PEM: { required: false }
 
     inputs:
