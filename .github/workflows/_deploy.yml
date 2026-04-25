@@ -117,9 +117,22 @@ jobs:
       version: ${{ steps.check.outputs.version }}
 
     steps:
+      - name: Create Github APP token
+        uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1
+        id: app-token
+        if: inputs.artifact-repository != ''
+        with:
+          client-id: ${{ inputs.github-app-client-id }}
+          app-id: ${{ inputs.github-app-id }}
+          private-key: ${{ secrets.DELIVERY_BOT_APP_PEM }}
+          owner: ${{ inputs.artifact-repository-owner }}
+          repositories: ${{ inputs.artifact-repository }}
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          repository: ${{ inputs.artifact-repository != '' && format('{0}/{1}', inputs.artifact-repository-owner, inputs.artifact-repository) || github.repository }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
           fetch-depth: 0 # Fetch all history so we can list branches
 
       - name: For each git ref
