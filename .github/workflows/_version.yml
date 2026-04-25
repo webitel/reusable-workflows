@@ -79,7 +79,7 @@ jobs:
 
       - name: For each git ref find the latest release branch
         id: latest-release-branch
-        uses: webitel/reusable-workflows/actions/check-latest@check-latest-v1.0.1
+        uses: webitel/reusable-workflows/actions/check-latest@check-latest-v1.0.2
 
       - name: Get version
         id: version
@@ -99,25 +99,42 @@ jobs:
             console.log(`🔀 Triggered branch: ${triggeredBranch}`);
             console.log(`🏷️ Latest release branch: ${latestReleaseBranch || 'none'}`);
             
-            function parseVersion(versionString) {
-              if (!versionString) return null;
+            function parseReleaseBranch(branchName) {
+              if (!branchName) return null;
+
+              const match = /^v(\d{2})\.(\d{1,2})$/.exec(branchName);
+              if (!match) return null;
             
-              const cleanVersion = versionString.replace(/^v/, '');
-              const parts = cleanVersion.split('.');
-              if (parts.length >= 2) {
-                const year = parts[0];
-                const month = parts[1].replace(/^0+/, '') || '0';
-                return `${year}.${month}`;
-              }
+              const year = Number.parseInt(match[1], 10);
+              const month = Number.parseInt(match[2], 10);
+              if (month < 1 || month > 12) return null;
             
-              return cleanVersion;
+              return {
+                branch: branchName,
+                year,
+                month,
+                normalized: `${match[1]}.${month}`
+              };
             }
             
             function getCurrentDateVersion() {
               const now = new Date();
-              const year = now.getFullYear().toString().slice(-2);
-              const month = (now.getMonth() + 1).toString();
+              const year = now.getUTCFullYear().toString().slice(-2);
+              const month = (now.getUTCMonth() + 1).toString();
               return `${year}.${month}`;
+            }
+
+            function getNextDevelopmentVersion(releaseBranch) {
+              const release = parseReleaseBranch(releaseBranch);
+              if (!release) {
+                throw new Error(`Invalid latest release branch: ${releaseBranch}`);
+              }
+
+              if (release.month === 12) {
+                return `${((release.year + 1) % 100).toString().padStart(2, '0')}.1`;
+              }
+
+              return `${release.year.toString().padStart(2, '0')}.${release.month + 1}`;
             }
             
             let version;
@@ -126,16 +143,29 @@ jobs:
               console.log('🔨 Processing development build');
             
               if (latestReleaseBranch) {
-                console.log(`📦 Using version from latest release branch: ${latestReleaseBranch}`);
-                version = parseVersion(latestReleaseBranch);
+                const release = parseReleaseBranch(latestReleaseBranch);
+                if (!release) {
+                  throw new Error(`Latest release branch "${latestReleaseBranch}" is invalid`);
+                }
+
+                console.log(`📦 Using next version after latest release branch: ${latestReleaseBranch}`);
+                version = getNextDevelopmentVersion(latestReleaseBranch);
               } else {
                 console.log('📅 No release branch found, using date-based version');
                 version = getCurrentDateVersion();
               }
             } else {
+              const release = parseReleaseBranch(triggeredBranch);
+              if (!release) {
+                throw new Error(
+                  `Unsupported branch "${triggeredBranch}". Expected development branch "${developmentBranch}" ` +
+                  'or release branch in format vYY.M / vYY.MM with month in range 1..12.'
+                );
+              }
+
               console.log('🚀 Processing release build');
               console.log(`📦 Using version from triggered branch: ${triggeredBranch}`);
-              version = parseVersion(triggeredBranch);
+              version = release.normalized;
             }
             
             console.log(`✨ Final version: ${version}`);
