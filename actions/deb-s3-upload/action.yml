@@ -136,6 +136,10 @@ runs:
 
       run: |
         export GPG_TTY=$(tty)
+
+        if [[ -z "${AWS_ENDPOINT_URL}" ]]; then
+          unset AWS_ENDPOINT_URL
+        fi
         
         cmd=(
           deb-s3 upload "${SOURCE_NAME}"
