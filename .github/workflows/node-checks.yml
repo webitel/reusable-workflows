@@ -34,17 +34,11 @@ jobs:
       - name: Install dependencies
         run: npm ci --install-links --install-strategy shallow
 
-      - name: Register ESLint problem matcher
-        run: |
-          echo "::add-matcher::.shared-actions/.github/problem-matchers/node/eslint-stylish.json"
-          echo "::add-matcher::.shared-actions/.github/problem-matchers/node/eslint-compact.json"
-          echo "::add-matcher::.shared-actions/.github/problem-matchers/node/tsc.json"
-
       - name: Run ESLint / Prettier formatting
-        run: npm run lint:ci
+        run: npm run biome:ci:gh # "gh" coz biome generates specific report format for github
 
       - name: Run Typecheck
-        run: npm run tsc
+        run: npm run typecheck:ci
 
   test:
     name: Unit testing
@@ -60,12 +54,6 @@ jobs:
 
       - name: Run unit tests
         run: npm run test:unit:ci
-
-      - name: Test Summary
-        if: always()
-        uses: test-summary/action@v2.4
-        with:
-          paths: test-results/tests.xml
 
   audit:
     name: Vulnerabilities
