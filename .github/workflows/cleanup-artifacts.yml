@@ -41,19 +41,20 @@ jobs:
       actions: write
       contents: read
 
-    steps:
-      - name: Cleanup artifacts
-        uses: actions/github-script@v8
-        env:
-          KEEP: ${{ inputs.keep-latest }}
-          DRY: ${{ inputs.dry-run }}
-          SINCE_HOURS: ${{ inputs.since-hours }}
+    env:
+      KEEP: ${{ inputs.keep-latest }}
+      DRY: ${{ inputs.dry-run }}
+      SINCE_HOURS: ${{ inputs.since-hours }}
+      PLAN_FILE: /tmp/cleanup-plan.json
 
+    steps:
+      - name: Build keep-set
+        uses: actions/github-script@v8
         with:
           script: |
+            const fs = require('fs');
             const { owner, repo } = context.repo;
             const keep = Number(process.env.KEEP);
-            const dryRun = process.env.DRY === 'true';
             const sinceHours = Number(process.env.SINCE_HOURS);
             const RELEASE_RE = /^v\d+\.\d+$/;
 
@@ -62,114 +63,133 @@ jobs:
 
             const { data: repoMeta } = await github.rest.repos.get({ owner, repo });
             const defaultBranch = repoMeta.default_branch;
-            core.info(`Repo: ${owner}/${repo}`);
-            core.info(`Default branch: ${defaultBranch}`);
-            core.info(`keep-latest: ${keep}, dry-run: ${dryRun}, since: ${sinceIso}`);
+            core.info(`Default branch: ${defaultBranch}, since: ${sinceIso}`);
 
-            core.startGroup('Fetch workflow runs');
+            // Fetch workflow runs in window.
             const runs = [];
             for await (const page of github.paginate.iterator(
               github.rest.actions.listWorkflowRunsForRepo,
               { owner, repo, per_page: 100, created: `>=${sinceIso}` },
             )) {
-              for (const run of page.data) {
+              for (const r of page.data) {
                 runs.push({
-                  id: run.id,
-                  workflow_id: run.workflow_id,
-                  branch: run.head_branch ?? '',
-                  created_at: run.created_at,
+                  id: r.id,
+                  workflow_id: r.workflow_id,
+                  branch: r.head_branch ?? '',
+                  created_at: r.created_at,
                 });
               }
             }
-            
-            core.info(`Total runs: ${runs.length}`);
-            core.endGroup();
 
-            core.startGroup('Build keep-set');
+            // Group preserved-branch runs by (workflow_id, branch); take top N per group.
             const isPreserved = (b) => b === defaultBranch || RELEASE_RE.test(b);
             const groups = new Map();
-            for (const run of runs) {
-              if (!isPreserved(run.branch)) continue;
-              const key = `${run.workflow_id}|${run.branch}`;
+            for (const r of runs) {
+              if (!isPreserved(r.branch)) continue;
+              const key = `${r.workflow_id}|${r.branch}`;
               if (!groups.has(key)) groups.set(key, []);
-              groups.get(key).push(run);
+              groups.get(key).push(r);
             }
             
-            const keepRunIds = new Set();
+            const keepRunIds = [];
             for (const [, list] of groups) {
               list.sort((a, b) => b.created_at.localeCompare(a.created_at));
-              for (const run of list.slice(0, keep)) {
-                keepRunIds.add(run.id);
-              }
+              for (const r of list.slice(0, keep)) keepRunIds.push(r.id);
             }
             
-            core.info(`Preserved groups: ${groups.size}, run ids kept: ${keepRunIds.size}`);
-            core.endGroup();
+            core.info(`Runs: ${runs.length}, preserved groups: ${groups.size}, kept: ${keepRunIds.length}`);
 
-            core.startGroup('Fetch artifacts');
-            
-            // listArtifactsForRepo returns newest first; stop paginating once we
-            // cross the since threshold.
-            const artifacts = [];
-            let stop = false;
-            for await (const page of github.paginate.iterator(
-              github.rest.actions.listArtifactsForRepo,
-              { owner, repo, per_page: 100 },
-            )) {
-              for (const a of page.data) {
-                if (new Date(a.created_at) < sinceDate) {
-                  stop = true;
-                  break;
+            const plan = {
+              config: { owner, repo, defaultBranch, keep, sinceIso, sinceHours,
+                        dryRun: process.env.DRY === 'true' },
+              stats: { runs: runs.length, preservedGroups: groups.size, keepRunIds: keepRunIds.length },
+              runs,
+              keepRunIds,
+            };
+
+            fs.writeFileSync(process.env.PLAN_FILE, JSON.stringify(plan));
+
+      - name: Find candidates
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = JSON.parse(fs.readFileSync(process.env.PLAN_FILE, 'utf8'));
+            const { owner, repo, defaultBranch } = plan.config;
+            const RELEASE_RE = /^v\d+\.\d+$/;
+            const isPreserved = (b) => b === defaultBranch || RELEASE_RE.test(b);
+            const keepSet = new Set(plan.keepRunIds);
+
+            // Iterate runs in window; fetch each run's artifacts.
+            let totalArtifacts = 0;
+            const candidates = [];
+            for (const run of plan.runs) {
+              const isKeptRun = keepSet.has(run.id);
+              for await (const page of github.paginate.iterator(
+                github.rest.actions.listWorkflowRunArtifacts,
+                { owner, repo, run_id: run.id, per_page: 100 },
+              )) {
+                for (const a of page.data) {
+                  totalArtifacts++;
+                  let reason = null;
+                  if (a.expired) reason = 'expired';
+                  else if (!isKeptRun) reason = isPreserved(run.branch) ? 'older run' : 'non-preserved branch';
+                  if (!reason) continue;
+                  candidates.push({
+                    id: a.id,
+                    name: a.name,
+                    size: a.size_in_bytes,
+                    expired: a.expired,
+                    branch: run.branch,
+                    reason,
+                    status: 'pending',
+                  });
                 }
-            
-                artifacts.push({
-                  id: a.id,
-                  name: a.name,
-                  size: a.size_in_bytes,
-                  expired: a.expired,
-                  run_id: a.workflow_run?.id ?? null,
-                  branch: a.workflow_run?.head_branch ?? '',
-                });
               }
-            
-              if (stop) break;
             }
 
-            core.info(`Artifacts in window: ${artifacts.length}`);
-            core.endGroup();
+            core.info(`Artifacts: ${totalArtifacts}, candidates: ${candidates.length}`);
+            plan.stats.artifacts = totalArtifacts;
+            plan.candidates = candidates;
+            fs.writeFileSync(process.env.PLAN_FILE, JSON.stringify(plan));
 
-            const toDelete = artifacts.filter(
-              (a) => a.expired || a.run_id === null || !keepRunIds.has(a.run_id),
-            );
-            
-            const totalBytes = toDelete.reduce((s, a) => s + (a.size || 0), 0);
-            core.info(`Candidates to delete: ${toDelete.length} (${totalBytes} bytes)`);
+      - name: Delete artifacts
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = JSON.parse(fs.readFileSync(process.env.PLAN_FILE, 'utf8'));
+            const { owner, repo, dryRun } = plan.config;
 
-            core.startGroup('Delete');
-            let deleted = 0;
-            let failed = 0;
-            for (const a of toDelete) {
-              const reason = `expired=${a.expired} branch=${a.branch || '<none>'}`;
+            for (const a of plan.candidates) {
               if (dryRun) {
-                core.info(`DRY: would delete id=${a.id} name=${a.name} (${reason})`);
+                a.status = 'dry-run';
+                core.info(`DRY: would delete id=${a.id} name=${a.name} (${a.reason})`);
                 continue;
               }
             
               try {
-                await github.rest.actions.deleteArtifact({
-                  owner,
-                  repo,
-                  artifact_id: a.id,
-                });
-                core.info(`deleted id=${a.id} name=${a.name} (${reason})`);
-                deleted++;
+                await github.rest.actions.deleteArtifact({ owner, repo, artifact_id: a.id });
+                a.status = 'deleted';
+                core.info(`deleted id=${a.id} name=${a.name} (${a.reason})`);
               } catch (err) {
+                a.status = 'failed';
+                a.error = err.message;
                 core.warning(`failed id=${a.id} name=${a.name}: ${err.message}`);
-                failed++;
               }
             }
             
-            core.endGroup();
+            fs.writeFileSync(process.env.PLAN_FILE, JSON.stringify(plan));
+
+      - name: Render summary
+        if: always()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = JSON.parse(fs.readFileSync(process.env.PLAN_FILE, 'utf8'));
+            const { config, stats, candidates } = plan;
+            const { owner, repo, defaultBranch, keep, sinceIso, sinceHours, dryRun } = config;
 
             const fmtBytes = (n) => {
               if (n < 1024) return `${n} B`;
@@ -177,18 +197,82 @@ jobs:
               if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MiB`;
               return `${(n / 1024 ** 3).toFixed(2)} GiB`;
             };
-            
-            await core.summary
-              .addHeading('Cleanup artifacts summary', 2)
-              .addList([
-                `Repo: \`${owner}/${repo}\``,
-                `Default branch: \`${defaultBranch}\``,
-                `Window: \`since=${sinceIso}\` (${sinceHours}h)`,
-                `keep-latest: \`${keep}\``,
-                `dry-run: \`${dryRun}\``,
-                `Candidates: **${toDelete.length}** (${fmtBytes(totalBytes)})`,
-                dryRun
-                  ? 'Deleted: _none (dry-run)_'
-                  : `Deleted: **${deleted}**${failed > 0 ? `, Failed: **${failed}**` : ''}`,
-              ])
-              .write();
+
+            const totalBytes = candidates.reduce((s, a) => s + (a.size || 0), 0);
+            const deleted = candidates.filter((a) => a.status === 'deleted').length;
+            const failed = candidates.filter((a) => a.status === 'failed').length;
+            const failedBytes = candidates
+              .filter((a) => a.status === 'failed')
+              .reduce((s, a) => s + (a.size || 0), 0);
+
+            const headline = dryRun
+              ? `🧪 Dry-run: ${candidates.length} candidate(s), ${fmtBytes(totalBytes)}`
+              : failed > 0
+                ? `⚠️ Deleted ${deleted}, failed ${failed}, freed ${fmtBytes(totalBytes - failedBytes)}`
+                : deleted > 0
+                  ? `✅ Deleted ${deleted} artifact(s), freed ${fmtBytes(totalBytes)}`
+                  : `✨ Nothing to clean`;
+
+            const byReason = candidates.reduce((acc, a) => {
+              acc[a.reason] = acc[a.reason] || { count: 0, bytes: 0 };
+              acc[a.reason].count++;
+              acc[a.reason].bytes += a.size || 0;
+              return acc;
+            }, {});
+
+            const summary = core.summary
+              .addHeading('🧹 Cleanup artifacts', 2)
+              .addRaw(`<p><strong>${headline}</strong></p>`)
+              .addHeading('Configuration', 3)
+              .addTable([
+                [
+                  { data: 'Setting', header: true },
+                  { data: 'Value', header: true },
+                ],
+                ['Repo', `<code>${owner}/${repo}</code>`],
+                ['Default branch', `<code>${defaultBranch}</code>`],
+                ['Window', `${sinceHours}h (since <code>${sinceIso}</code>)`],
+                ['keep-latest', `<code>${keep}</code>`],
+                ['dry-run', `<code>${dryRun}</code>`],
+                ['Artifacts in window', String(stats.artifacts)],
+                ['Runs in window', String(stats.runs)],
+                ['Preserved run ids', String(stats.keepRunIds)],
+              ]);
+
+            if (Object.keys(byReason).length > 0) {
+              summary.addHeading('Breakdown by reason', 3).addTable([
+                [
+                  { data: 'Reason', header: true },
+                  { data: 'Count', header: true },
+                  { data: 'Size', header: true },
+                ],
+                ...Object.entries(byReason).map(([r, v]) => [
+                  r,
+                  String(v.count),
+                  fmtBytes(v.bytes),
+                ]),
+              ]);
+            }
+
+            if (candidates.length > 0) {
+              const icon = (s) =>
+                s === 'deleted' ? '✅' : s === 'dry-run' ? '🧪' : s === 'failed' ? '❌' : '·';
+              summary.addHeading('Items', 3).addTable([
+                [
+                  { data: '', header: true },
+                  { data: 'Name', header: true },
+                  { data: 'Branch', header: true },
+                  { data: 'Size', header: true },
+                  { data: 'Reason', header: true },
+                ],
+                ...candidates.map((a) => [
+                  icon(a.status),
+                  `<code>${a.name}</code>`,
+                  a.branch ? `<code>${a.branch}</code>` : '<em>—</em>',
+                  fmtBytes(a.size || 0),
+                  a.reason,
+                ]),
+              ]);
+            }
+
+            await summary.write();
