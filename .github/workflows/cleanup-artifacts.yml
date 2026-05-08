@@ -1,0 +1,194 @@
+name: Cleanup artifacts
+
+# Reusable workflow that deletes GitHub Actions artifacts which GitHub leaves behind
+# after retention-days expires (it only flips `expired: true` but does not free storage).
+#
+# Behavior:
+#   - Always deletes artifacts with `expired: true`.
+#   - On preserved branches (default branch + release branches matching ^v\d+\.\d+$),
+#     keeps the latest `keep-latest` runs per (workflow_id, branch); deletes older.
+#   - On all other branches (PR/feature), deletes every non-expired artifact.
+
+on:
+  workflow_call:
+    inputs:
+      keep-latest:
+        type: number
+        required: false
+        default: 1
+        description: How many most-recent runs per (workflow, preserved-branch) to preserve.
+
+      dry-run:
+        type: boolean
+        required: false
+        default: false
+        description: If true, only log what would be deleted; do not call DELETE.
+
+      since-hours:
+        type: number
+        required: false
+        default: 25
+        description: |
+          Only consider workflow runs and artifacts created within the last N hours.
+          Designed for daily cron runs (24h + 1h overlap). Older items are out of scope
+          for this run and must be cleaned separately.
+
+jobs:
+  cleanup:
+    name: Cleanup
+    runs-on: [ arc-runner-set ]
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Cleanup artifacts
+        uses: actions/github-script@v8
+        env:
+          KEEP: ${{ inputs.keep-latest }}
+          DRY: ${{ inputs.dry-run }}
+          SINCE_HOURS: ${{ inputs.since-hours }}
+
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const keep = Number(process.env.KEEP);
+            const dryRun = process.env.DRY === 'true';
+            const sinceHours = Number(process.env.SINCE_HOURS);
+            const RELEASE_RE = /^v\d+\.\d+$/;
+
+            const sinceDate = new Date(Date.now() - sinceHours * 3600 * 1000);
+            const sinceIso = sinceDate.toISOString();
+
+            const { data: repoMeta } = await github.rest.repos.get({ owner, repo });
+            const defaultBranch = repoMeta.default_branch;
+            core.info(`Repo: ${owner}/${repo}`);
+            core.info(`Default branch: ${defaultBranch}`);
+            core.info(`keep-latest: ${keep}, dry-run: ${dryRun}, since: ${sinceIso}`);
+
+            core.startGroup('Fetch workflow runs');
+            const runs = [];
+            for await (const page of github.paginate.iterator(
+              github.rest.actions.listWorkflowRunsForRepo,
+              { owner, repo, per_page: 100, created: `>=${sinceIso}` },
+            )) {
+              for (const run of page.data) {
+                runs.push({
+                  id: run.id,
+                  workflow_id: run.workflow_id,
+                  branch: run.head_branch ?? '',
+                  created_at: run.created_at,
+                });
+              }
+            }
+            
+            core.info(`Total runs: ${runs.length}`);
+            core.endGroup();
+
+            core.startGroup('Build keep-set');
+            const isPreserved = (b) => b === defaultBranch || RELEASE_RE.test(b);
+            const groups = new Map();
+            for (const run of runs) {
+              if (!isPreserved(run.branch)) continue;
+              const key = `${run.workflow_id}|${run.branch}`;
+              if (!groups.has(key)) groups.set(key, []);
+              groups.get(key).push(run);
+            }
+            
+            const keepRunIds = new Set();
+            for (const [, list] of groups) {
+              list.sort((a, b) => b.created_at.localeCompare(a.created_at));
+              for (const run of list.slice(0, keep)) {
+                keepRunIds.add(run.id);
+              }
+            }
+            
+            core.info(`Preserved groups: ${groups.size}, run ids kept: ${keepRunIds.size}`);
+            core.endGroup();
+
+            core.startGroup('Fetch artifacts');
+            
+            // listArtifactsForRepo returns newest first; stop paginating once we
+            // cross the since threshold.
+            const artifacts = [];
+            let stop = false;
+            for await (const page of github.paginate.iterator(
+              github.rest.actions.listArtifactsForRepo,
+              { owner, repo, per_page: 100 },
+            )) {
+              for (const a of page.data) {
+                if (new Date(a.created_at) < sinceDate) {
+                  stop = true;
+                  break;
+                }
+            
+                artifacts.push({
+                  id: a.id,
+                  name: a.name,
+                  size: a.size_in_bytes,
+                  expired: a.expired,
+                  run_id: a.workflow_run?.id ?? null,
+                  branch: a.workflow_run?.head_branch ?? '',
+                });
+              }
+            
+              if (stop) break;
+            }
+
+            core.info(`Artifacts in window: ${artifacts.length}`);
+            core.endGroup();
+
+            const toDelete = artifacts.filter(
+              (a) => a.expired || a.run_id === null || !keepRunIds.has(a.run_id),
+            );
+            
+            const totalBytes = toDelete.reduce((s, a) => s + (a.size || 0), 0);
+            core.info(`Candidates to delete: ${toDelete.length} (${totalBytes} bytes)`);
+
+            core.startGroup('Delete');
+            let deleted = 0;
+            let failed = 0;
+            for (const a of toDelete) {
+              const reason = `expired=${a.expired} branch=${a.branch || '<none>'}`;
+              if (dryRun) {
+                core.info(`DRY: would delete id=${a.id} name=${a.name} (${reason})`);
+                continue;
+              }
+            
+              try {
+                await github.rest.actions.deleteArtifact({
+                  owner,
+                  repo,
+                  artifact_id: a.id,
+                });
+                core.info(`deleted id=${a.id} name=${a.name} (${reason})`);
+                deleted++;
+              } catch (err) {
+                core.warning(`failed id=${a.id} name=${a.name}: ${err.message}`);
+                failed++;
+              }
+            }
+            
+            core.endGroup();
+
+            const fmtBytes = (n) => {
+              if (n < 1024) return `${n} B`;
+              if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KiB`;
+              if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MiB`;
+              return `${(n / 1024 ** 3).toFixed(2)} GiB`;
+            };
+            
+            await core.summary
+              .addHeading('Cleanup artifacts summary', 2)
+              .addList([
+                `Repo: \`${owner}/${repo}\``,
+                `Default branch: \`${defaultBranch}\``,
+                `Window: \`since=${sinceIso}\` (${sinceHours}h)`,
+                `keep-latest: \`${keep}\``,
+                `dry-run: \`${dryRun}\``,
+                `Candidates: **${toDelete.length}** (${fmtBytes(totalBytes)})`,
+                dryRun
+                  ? 'Deleted: _none (dry-run)_'
+                  : `Deleted: **${deleted}**${failed > 0 ? `, Failed: **${failed}**` : ''}`,
+              ])
+              .write();
