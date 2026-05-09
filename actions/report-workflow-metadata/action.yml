@@ -1,0 +1,49 @@
+name: Report Workflow Metadata
+description: Reports release metadata to github-dashboard without blocking the workflow on callback failures.
+author: Webitel
+
+branding:
+  icon: activity
+  color: blue
+
+inputs:
+  endpoint-url:
+    required: false
+    default: https://dev.webitel.com/api/workflow-metadata
+    description: Workflow metadata callback endpoint.
+
+  audience:
+    required: false
+    default: https://dev.webitel.com
+    description: Audience requested for the GitHub Actions OIDC token.
+
+  sha:
+    required: true
+    description: Commit SHA observed by the workflow.
+
+  version:
+    required: true
+    description: Calculated release version.
+
+  release-line:
+    required: false
+    description: Release line reported to the dashboard. Defaults to version when omitted.
+
+  retries:
+    required: false
+    default: "2"
+    description: Number of retries for transient callback failures.
+
+  timeout-ms:
+    required: false
+    default: "5000"
+    description: Per-request timeout in milliseconds.
+
+  retry-delay-ms:
+    required: false
+    default: "1000"
+    description: Delay between retry attempts in milliseconds.
+
+runs:
+  using: node24
+  main: src/index.js
