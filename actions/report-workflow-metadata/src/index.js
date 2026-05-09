@@ -2,9 +2,11 @@
 
 const { escapeCommandValue, reportWorkflowMetadata } = require('./reporter');
 
-run().catch((error) => {
-  warning(`Workflow metadata reporting skipped: ${error.message}`);
-});
+if (require.main === module) {
+  run().catch((error) => {
+    warning(`Workflow metadata reporting skipped: ${error.message}`);
+  });
+}
 
 async function run() {
   const reported = await reportWorkflowMetadata({
@@ -26,7 +28,7 @@ async function run() {
 }
 
 function input(name, defaultValue = '') {
-  const value = process.env[`INPUT_${name.toUpperCase().replace(/-/g, '_')}`];
+  const value = process.env[`INPUT_${name.replace(/ /g, '_').toUpperCase()}`];
   return value === undefined || value === '' ? defaultValue : value;
 }
 
@@ -43,3 +45,5 @@ function integerInput(name, defaultValue) {
 function warning(message) {
   console.log(`::warning::${escapeCommandValue(message)}`);
 }
+
+module.exports = { input, integerInput };
