@@ -58,6 +58,10 @@ jobs:
     name: Version
     uses: webitel/reusable-workflows/.github/workflows/_version.yml@v2
     if: inputs.only-dependencies != 'true'
+    permissions:
+      contents: read
+      id-token: write
+
     with:
       development-branch: ${{ inputs.development-branch }}
       triggered-branch: ${{ inputs.triggered-branch }}

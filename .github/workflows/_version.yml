@@ -48,6 +48,10 @@ jobs:
   parse:
     name: Parse
     runs-on: [ arc-runner-set ]
+    permissions:
+      contents: read
+      id-token: write
+
     outputs:
       version: ${{ steps.version.outputs.version }}
       build-timestamp: ${{ steps.metadata.outputs.build-timestamp }}
@@ -167,6 +171,14 @@ jobs:
               console.log(`📦 Using version from triggered branch: ${triggeredBranch}`);
               version = release.normalized;
             }
-            
+
             console.log(`✨ Final version: ${version}`);
             core.setOutput('version', version);
+
+      - name: Report workflow metadata
+        if: ${{ steps.version.outputs.version != '' }}
+        uses: webitel/reusable-workflows/actions/report-workflow-metadata@report-workflow-metadata-v1
+        with:
+          sha: ${{ github.sha }}
+          version: ${{ format('{0}-{1}', steps.version.outputs.version, github.run_number) }}
+          release-line: ${{ steps.version.outputs.version }}
