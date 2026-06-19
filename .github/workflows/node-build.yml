@@ -97,6 +97,7 @@ jobs:
         env:
           VITE_BUILD_NUMBER: ${{ inputs.version-build }}
           VITE_BUILD_TIMESTAMP: ${{ inputs.build-timestamp }}
+          VITE_STAGING_ENV: ${{ inputs.prerelease == 'dev' && 'true' || 'false' }}
 
         run: npm run build
 
