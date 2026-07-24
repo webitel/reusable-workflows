@@ -99,7 +99,7 @@ jobs:
           fail-on: high
 
       - name: Upload to code-scanning
-        if: always()
+        if: github.event.repository.private == false
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: report.sarif
@@ -108,12 +108,28 @@ jobs:
       - name: Fail on high or critical vulnerabilities
         if: always() && steps.sarif.outputs.has-failures == 'true'
         run: |
+          echo "::group::npm audit report (max severity: ${{ steps.sarif.outputs.max-severity }}, findings: ${{ steps.sarif.outputs.result-count }})"
+          jq -r '
+            .vulnerabilities // {}
+            | to_entries[]
+            | .key as $package
+            | (.value.severity // "info") as $package_severity
+            | "\($package) (\($package_severity)):",
+              ( .value.via // []
+                | .[]
+                | select(type == "object")
+                | "  - [\((.severity // "info") | ascii_upcase)] \(.title // .url // .name // "unknown vulnerability")\(if .url then " (\(.url))" else "" end)"
+              )
+          ' audit.json
+          echo "::endgroup::"
+
           echo "npm audit found ${{ steps.sarif.outputs.max-severity }} vulnerabilities" >&2
           exit 1
 
   codeql-matrix:
     name: CodeQL matrix
     runs-on: [ arc-runner-set ]
+    if: github.event.repository.private == false
     outputs:
       languages: ${{ steps.build.outputs.languages }}
 
