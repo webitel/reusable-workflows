@@ -107,23 +107,28 @@ jobs:
 
       - name: Fail on high or critical vulnerabilities
         if: always() && steps.sarif.outputs.has-failures == 'true'
+        env:
+          MAX_SEVERITY: ${{ steps.sarif.outputs.max-severity }}
+          FINDINGS: ${{ steps.sarif.outputs.result-count }}
         run: |
-          echo "::group::npm audit report (max severity: ${{ steps.sarif.outputs.max-severity }}, findings: ${{ steps.sarif.outputs.result-count }})"
-          jq -r '
+          report="$(jq -r '
             .vulnerabilities // {}
             | to_entries[]
             | .key as $package
             | (.value.severity // "info") as $package_severity
+            | (.value.via // []) as $via
+            | [ $via[] | select(type == "object") ] as $advisories
+            | [ $via[] | select(type == "string") ] as $chains
             | "\($package) (\($package_severity)):",
-              ( .value.via // []
-                | .[]
-                | select(type == "object")
+              ( $advisories[]
                 | "  - [\((.severity // "info") | ascii_upcase)] \(.title // .url // .name // "unknown vulnerability")\(if .url then " (\(.url))" else "" end)"
-              )
-          ' audit.json
-          echo "::endgroup::"
+              ),
+              ( if ($chains | length) > 0 then "  - via " + ($chains | join(", ")) else empty end )
+          ' audit.json)"
 
-          echo "npm audit found ${{ steps.sarif.outputs.max-severity }} vulnerabilities" >&2
+          printf '%s\n\n%s\n' "npm audit found ${MAX_SEVERITY} vulnerabilities (${FINDINGS} packages affected):" "$report"
+
+          echo "::error title=npm audit::Found ${MAX_SEVERITY} vulnerabilities in ${FINDINGS} package(s)."
           exit 1
 
   codeql-matrix:
