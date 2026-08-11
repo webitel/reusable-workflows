@@ -1,0 +1,205 @@
+# Updates a single @webitel/* dependency in a consumer repository and pushes the
+# bump straight to the triggering branch.
+#
+# npm runs a malware scan on freshly published versions, so for a while after
+# `npm publish` returns the version is not yet installable. When the caller
+# passes `version`, this workflow waits for that version to become installable
+# before touching anything, then asserts the repository actually ended up on it.
+name: Update lib
+
+on:
+  workflow_call:
+    secrets:
+      app-pem: { required: true }
+
+    inputs:
+      package:
+        type: string
+        required: true
+        description: |
+          Name of the package to update, e.g. @webitel/ui-sdk. The caller owns the
+          dropdown - `choice` is only valid for workflow_dispatch, so a
+          workflow_call input can only ever be a plain string.
+
+      version:
+        type: string
+        required: false
+        default: ''
+        description: |
+          Version to wait for before updating, e.g. 26.8.34 (a leading "v" is
+          accepted). When empty, no waiting happens and the package is simply
+          updated to whatever the registry already serves.
+
+      client-id:
+        type: string
+        required: false
+        description: Preferred GitHub App Client ID used to generate the installation token.
+
+      app-id:
+        type: string
+        required: false
+        description: Legacy GitHub App ID used to generate the installation token. Prefer client-id.
+
+env:
+  # How patient we are with npm's malware scan holding a new version back.
+  WAIT_TIMEOUT_MINUTES: 10
+  POLL_INTERVAL_SECONDS: 10
+
+jobs:
+  update:
+    name: Update ${{ inputs.package }}
+    runs-on: [ arc-frontend-runner-set ]
+
+    steps:
+      - name: Create GitHub App token
+        uses: webitel/reusable-workflows/actions/create-github-app-token@create-github-app-token-v1
+        id: app-token
+        with:
+          client-id: ${{ inputs.client-id }}
+          app-id: ${{ inputs.app-id }}
+          private-key: ${{ secrets.app-pem }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: true
+
+      - name: Configure Git
+        run: |
+          git config user.name '${{ steps.app-token.outputs.user-name }}'
+          git config user.email '${{ steps.app-token.outputs.user-email }}'
+
+      - name: Wait for version to become installable
+        if: inputs.version != ''
+        env:
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+
+        run: |
+          set -uo pipefail
+
+          requested_version="${VERSION#v}"            # tolerate "v26.8.34"
+
+          # Resolves the version *and* downloads its tarball without writing
+          # anything, which is exactly what "installable" has to mean here: the
+          # registry can list a version before its tarball clears the malware
+          # scan, and the tarball is what `npm install` actually fetches.
+          #
+          # --prefer-online matters. Packuments are served with
+          # `cache-control: max-age=300`, so without it npm may answer from a
+          # cache up to five minutes old and never notice the publish.
+          #
+          # --fetch-timeout keeps one stalled attempt from outliving the deadline.
+          version_is_installable() {
+            npm pack --dry-run --prefer-online --fetch-timeout=30000 \
+              "${PACKAGE}@${requested_version}" >/dev/null 2>&1
+          }
+
+          give_up_at_seconds=$(( SECONDS + WAIT_TIMEOUT_MINUTES * 60 ))
+
+          echo "Waiting up to ${WAIT_TIMEOUT_MINUTES}m for ${PACKAGE}@${requested_version} to become installable"
+
+          until version_is_installable; do
+            seconds_left=$(( give_up_at_seconds - SECONDS ))
+
+            if [ "$seconds_left" -le 0 ]; then
+              echo "::error::${PACKAGE}@${requested_version} is still not installable after ${WAIT_TIMEOUT_MINUTES}m. The npm malware scan may not have finished, or this version was never published."
+              exit 1
+            fi
+
+            echo "Not installable yet. ${seconds_left}s of budget left, checking again in ${POLL_INTERVAL_SECONDS}s."
+            sleep "$POLL_INTERVAL_SECONDS"
+          done
+
+          echo "::notice::${PACKAGE}@${requested_version} is installable"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Update selected lib
+        env:
+          PACKAGE: ${{ inputs.package }}
+
+        run: |
+          set -uo pipefail
+
+          # Deliberately unpinned: the semver range in package.json stays in
+          # charge, and --prefer-online stops npm from resolving against cached
+          # metadata that is old enough to miss a version published minutes ago.
+          npm update --prefer-online "$PACKAGE"
+
+          # Read the resolved version once here; the next two steps both need it.
+          #
+          # Via --json rather than `npm ls --parseable --long` string-chopping,
+          # because a linked package gets an extra path field appended and the
+          # version stops being the tail of the line.
+          #
+          # `npm ls` also exits non-zero on any tree problem (peer conflicts,
+          # extraneous packages) even when it still prints a usable tree - and a
+          # fresh bump is exactly what can introduce one. So read the version out
+          # and judge on that value rather than on npm's exit code.
+          installed_version="$(
+            npm ls "$PACKAGE" --depth=0 --json 2>/dev/null \
+              | jq --raw-output --arg package "$PACKAGE" '.dependencies[$package].version // empty'
+          )"
+
+          if [ -z "$installed_version" ]; then
+            echo "::error::${PACKAGE} is not a direct dependency of this repository, so there is nothing to update."
+            exit 1
+          fi
+
+          echo "::notice::${PACKAGE}@${installed_version} is installed"
+          echo "INSTALLED_VERSION=$installed_version" >> "$GITHUB_ENV"
+
+      - name: Verify resolved version
+        if: inputs.version != ''
+        env:
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+
+        run: |
+          set -uo pipefail
+
+          requested_version="${VERSION#v}"
+
+          # `npm update` cannot cross a semver range boundary. Asking for a minor
+          # bump while package.json pins ~26.8.13 changes nothing at all, which
+          # would otherwise sail through as a green run with no commit.
+          if [ "$INSTALLED_VERSION" != "$requested_version" ]; then
+            echo "::error::Asked for ${PACKAGE}@${requested_version} but the tree resolved to ${INSTALLED_VERSION}. The semver range in package.json excludes ${requested_version} - widen the range (or run npm i ${PACKAGE}@${requested_version}) and try again."
+            exit 1
+          fi
+
+      - name: Commit and push changes
+        env:
+          PACKAGE: ${{ inputs.package }}
+          TRIGGERED_BY: ${{ github.actor }}
+          TRIGGERED_BY_ID: ${{ github.actor_id }}
+
+        run: |
+          set -uo pipefail
+
+          git add package.json
+
+          # `npm update` rewrites whichever lockfile the repository actually
+          # keeps, and npm-shrinkwrap.json takes precedence over
+          # package-lock.json when both exist. Staging only one of them would let
+          # a real update look like "nothing to commit" and be thrown away.
+          for lockfile in package-lock.json npm-shrinkwrap.json; do
+            if [ -f "$lockfile" ]; then
+              git add "$lockfile"
+            fi
+          done
+
+          if git diff --cached --quiet; then
+            echo "::notice::${PACKAGE} was already up to date, nothing to commit"
+            exit 0
+          fi
+
+          co_author_email="${TRIGGERED_BY_ID}+${TRIGGERED_BY}@users.noreply.github.com"
+
+          git commit -m "chore(deps): update ${PACKAGE} to v${INSTALLED_VERSION}" \
+                     -m "Co-authored-by: ${TRIGGERED_BY} <${co_author_email}>"
+
+          git push
