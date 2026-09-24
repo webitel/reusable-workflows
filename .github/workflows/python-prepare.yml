@@ -1,0 +1,121 @@
+name: Prepare
+
+on:
+  workflow_call:
+    inputs:
+      development-branch:
+        type: string
+        required: false
+        default: main
+        description: Name of the development branch
+
+      triggered-branch:
+        type: string
+        required: false
+        default: ${{ github.ref_name }}
+        description: Name of the triggered branch
+
+      only-dependencies:
+        type: string
+        required: false
+        default: false
+
+      arch:
+        type: string
+        required: false
+        default: amd64
+        description: Comma-separated list of target architectures (e.g., "amd64" or "amd64, arm64").
+
+      codename:
+        type: string
+        required: false
+        default: bookworm
+        description: Comma-separated list of Debian codenames (e.g., "bookworm" or "bookworm, jammy").
+
+    outputs:
+      version:
+        value: ${{ jobs.version.outputs.version }}
+        description: Extracted version
+
+      build-timestamp:
+        value: ${{ jobs.version.outputs.build-timestamp }}
+        description: UTC build timestamp in ISO-8601 format
+
+      arch-matrix:
+        value: ${{ jobs.version.outputs.arch-matrix }}
+        description: JSON array of target architectures
+
+      codename-matrix:
+        value: ${{ jobs.version.outputs.codename-matrix }}
+        description: JSON array of Debian codenames
+
+      changes:
+        value: ${{ jobs.changes.outputs.changes }}
+        description: JSON array of changed categories (e.g., ["python", "dependencies", "workflows"])
+
+jobs:
+  version:
+    name: Version
+    if: inputs.only-dependencies != 'true'
+    uses: webitel/reusable-workflows/.github/workflows/_version.yml@v2
+    permissions:
+      contents: read
+      id-token: write
+
+    with:
+      development-branch: ${{ inputs.development-branch }}
+      triggered-branch: ${{ inputs.triggered-branch }}
+      arch: ${{ inputs.arch }}
+      codename: ${{ inputs.codename }}
+
+  changes:
+    name: Detect changes
+    runs-on: [ arc-runner-set ]
+    outputs:
+      changes: ${{ steps.build.outputs.changes }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            python:
+              - '**/*.py'
+              - '**/*.pyi'
+            dependencies:
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.python-version'
+            workflows:
+              - '.github/**'
+
+      - name: Build changes array
+        id: build
+        env:
+          PYTHON: ${{ steps.filter.outputs.python }}
+          DEPENDENCIES: ${{ steps.filter.outputs.dependencies }}
+          WORKFLOWS: ${{ steps.filter.outputs.workflows }}
+
+        run: |
+          changes='[]'
+          [[ "$PYTHON" == "true" ]]       && changes=$(echo "$changes" | jq -c '. + ["python"]')
+          [[ "$DEPENDENCIES" == "true" ]] && changes=$(echo "$changes" | jq -c '. + ["dependencies"]')
+          [[ "$WORKFLOWS" == "true" ]]    && changes=$(echo "$changes" | jq -c '. + ["workflows"]')
+
+          echo "changes=$changes" >> "$GITHUB_OUTPUT"
+
+  dependencies:
+    name: Dependencies
+    runs-on: [ arc-python-runner-set ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Download dependencies
+        run: uv sync --frozen
