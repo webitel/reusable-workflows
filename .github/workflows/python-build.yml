@@ -1,0 +1,291 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Extracted version to use for the build
+        required: true
+        type: string
+
+      version-build:
+        required: true
+        type: string
+
+      build-timestamp:
+        required: true
+        type: string
+        description: UTC build timestamp in ISO-8601 format
+
+      version-metadata:
+        type: string
+        required: false
+
+      prerelease:
+        type: string
+        required: false
+
+      build-info:
+        type: string
+        required: false
+        default: ''
+        description: |
+          Dotted name of a module to generate inside the package (e.g., kb_indexer._build_info)
+          with string constants VERSION, BUILD, PRERELEASE, COMMIT, BRANCH and BUILD_DATE.
+          The parent package must exist.
+
+      package-name:
+        type: string
+        required: true
+
+      package-description:
+        type: string
+        required: true
+
+      package-contents:
+        type: string
+        required: true
+        description: |
+          Package contents specification in nFPM format.
+          See: https://github.com/webitel/reusable-workflows/tree/main/actions/nfpm-build-action#contents-format
+
+      package-depends:
+        type: string
+        required: false
+        description: Package dependencies (comma-separated)
+
+      package-conflicts:
+        type: string
+        required: false
+        description: Packages this package conflicts with (comma-separated)
+
+      package-replaces:
+        type: string
+        required: false
+        description: Packages this package replaces (comma-separated)
+
+      package-provides:
+        type: string
+        required: false
+        description: Virtual or legacy packages this package provides (comma-separated)
+
+      scripts:
+        type: string
+        required: false
+        description: Scripts to run at specific stages.
+
+      arch:
+        type: string
+        required: false
+        default: amd64
+        description: Target architecture (amd64 or arm64).
+
+env:
+  MANYLINUX: manylinux_2_28
+
+jobs:
+  build:
+    name: Package
+    runs-on: [ arc-python-runner-set ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Resolve target
+        env:
+          ARCH: ${{ inputs.arch }}
+          PACKAGE_NAME: ${{ inputs.package-name }}
+
+        run: |
+          set -euo pipefail
+
+          case "$ARCH" in
+            amd64) march=x86_64 ;;
+            arm64) march=aarch64 ;;
+            *) echo "::error::Unsupported arch '$ARCH' (expected amd64 or arm64)"; exit 1 ;;
+          esac
+
+          for f in .python-version uv.lock; do
+            [ -f "$f" ] || { echo "::error file=$f::$f is required"; exit 1; }
+          done
+
+          python_version=$(tr -d '[:space:]' < .python-version)
+          if ! [[ "$python_version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error file=.python-version::Expected a plain version such as 3.12 or 3.12.7, got '$python_version'"
+            exit 1
+          fi
+
+          {
+            echo "MARCH=$march"
+            echo "PYTHON_VERSION=$python_version"
+            echo "PKG_ROOT=/usr/lib/webitel/$PACKAGE_NAME"
+            echo "STAGE=$GITHUB_WORKSPACE/.python-stage"
+          } >> "$GITHUB_ENV"
+
+      - name: Install interpreter
+        run: |
+          set -euo pipefail
+
+          uv python install --no-bin "$PYTHON_VERSION"
+
+          tmp="$RUNNER_TEMP/python-install"
+          uv python install --no-bin --install-dir "$tmp" "cpython-${PYTHON_VERSION}-linux-${MARCH}-gnu"
+
+          dir=$(find "$tmp" -mindepth 1 -maxdepth 1 -type d -name 'cpython-*')
+          minor=$(basename "$dir" | sed -E 's/^cpython-([0-9]+\.[0-9]+)\..*/\1/')
+
+          mkdir -p "${STAGE}${PKG_ROOT}"
+          mv "$dir" "${STAGE}${PKG_ROOT}/python"
+
+          {
+            echo "PYTHON_MINOR=$minor"
+            echo "SITE_PACKAGES=${STAGE}${PKG_ROOT}/python/lib/python${minor}/site-packages"
+          } >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+
+          uv export --quiet --frozen --no-dev --no-emit-project --no-header \
+            --format requirements.txt --output-file "$RUNNER_TEMP/requirements.txt"
+
+          uv pip install --target "$SITE_PACKAGES" \
+            --python-platform "${MARCH}-${MANYLINUX}" --python-version "$PYTHON_MINOR" \
+            --only-binary :all: --require-hashes --no-deps \
+            -r "$RUNNER_TEMP/requirements.txt"
+
+      - name: Install project
+        run: |
+          set -euo pipefail
+
+          uv build --wheel --out-dir "$RUNNER_TEMP/dist"
+          wheel=$(find "$RUNNER_TEMP/dist" -name '*.whl')
+          case "$wheel" in
+            *-none-any.whl) ;;
+            *) echo "::error::$(basename "$wheel") is not a pure wheel; native extensions are not supported"; exit 1 ;;
+          esac
+
+          uv pip install --target "$SITE_PACKAGES" \
+            --python-platform "${MARCH}-${MANYLINUX}" --python-version "$PYTHON_MINOR" \
+            --no-deps "$wheel"
+          rm -rf "${SITE_PACKAGES:?}/bin"
+
+          dist_info=$(basename "$wheel" | cut -d- -f1,2).dist-info
+          echo "PROJECT_DIST_INFO=$SITE_PACKAGES/$dist_info" >> "$GITHUB_ENV"
+
+      - name: Generate console scripts
+        run: |
+          uv run --no-project --python "$PYTHON_VERSION" python - <<'PY'
+          import configparser
+          import os
+          import pathlib
+
+          entry_points = pathlib.Path(os.environ["PROJECT_DIST_INFO"]) / "entry_points.txt"
+          bindir = pathlib.Path(os.environ["STAGE"]) / "usr/local/bin"
+          interpreter = f"{os.environ['PKG_ROOT']}/python/bin/python{os.environ['PYTHON_MINOR']}"
+
+          parser = configparser.ConfigParser(delimiters=("=",), interpolation=None)
+          parser.optionxform = str
+          parser.read(entry_points)
+          scripts = parser["console_scripts"] if parser.has_section("console_scripts") else {}
+
+          bindir.mkdir(parents=True, exist_ok=True)
+          for name, target in scripts.items():
+              module, _, attr = target.partition(":")
+              attr = attr.split("[", 1)[0].strip()
+              script = bindir / name
+              script.write_text(
+                  f"#!{interpreter} -I\n"
+                  "import sys\n"
+                  f"from {module.strip()} import {attr.split('.', 1)[0]}\n"
+                  f"sys.exit({attr}())\n"
+              )
+              script.chmod(0o755)
+              print(f"{name} -> {module.strip()}:{attr}")
+          PY
+
+      - name: Generate build info
+        if: inputs.build-info != ''
+        env:
+          BUILD_INFO: ${{ inputs.build-info }}
+          INFO_VERSION: ${{ inputs.version }}
+          INFO_BUILD: ${{ inputs.version-build }}
+          INFO_PRERELEASE: ${{ inputs.prerelease }}
+          INFO_COMMIT: ${{ github.sha }}
+          INFO_BRANCH: ${{ github.head_ref || github.ref_name }}
+          INFO_BUILD_DATE: ${{ inputs.build-timestamp }}
+
+        run: |
+          uv run --no-project --python "$PYTHON_VERSION" python - <<'PY'
+          import os
+          import pathlib
+          import sys
+
+          *package, module = os.environ["BUILD_INFO"].split(".")
+          parent = pathlib.Path(os.environ["SITE_PACKAGES"], *package)
+          if not package or not parent.is_dir():
+              print(f"::error::build-info: package {'.'.join(package) or '<none>'} is not in the bundle")
+              sys.exit(1)
+
+          fields = ("VERSION", "BUILD", "PRERELEASE", "COMMIT", "BRANCH", "BUILD_DATE")
+          lines = ["# Generated by webitel/reusable-workflows python-build.yml; do not edit."]
+          lines += [f"{field} = {os.environ.get('INFO_' + field, '')!r}" for field in fields]
+          (parent / f"{module}.py").write_text("\n".join(lines) + "\n")
+          PY
+
+      - name: Compile bytecode
+        run: |
+          uv run --no-project --python "$PYTHON_VERSION" python -m compileall -q -j 0 \
+            --invalidation-mode unchecked-hash \
+            -x '/tests?/' \
+            -d "${PKG_ROOT}/python/lib/python${PYTHON_MINOR}" \
+            "${STAGE}${PKG_ROOT}/python/lib/python${PYTHON_MINOR}"
+
+      - name: Collect package contents
+        id: contents
+        run: |
+          {
+            echo 'value<<EOF_CONTENTS'
+            echo "src=.python-stage${PKG_ROOT}/python dst=${PKG_ROOT}/python type=tree"
+            for script in "$STAGE"/usr/local/bin/*; do
+              [ -e "$script" ] || continue
+              name=$(basename "$script")
+              echo "src=.python-stage/usr/local/bin/${name} dst=/usr/local/bin/${name} type=file mode=0755"
+            done
+            echo 'EOF_CONTENTS'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build package
+        uses: webitel/reusable-workflows/actions/nfpm-build@nfpm-build-v2
+        with:
+          formats: deb
+          target: dist
+          maintainer: Webitel <support@webitel.com>
+          homepage: https://webitel.com
+          arch: ${{ inputs.arch }}
+          platform: linux
+          package-name: ${{ inputs.package-name }}
+          package-description: ${{ inputs.package-description }}
+          version: ${{ inputs.version }}
+          release: ${{ inputs.version-build }}
+          prerelease: ${{ inputs.prerelease }}
+          version-metadata: ${{ inputs.version-metadata }}
+          contents: |
+            ${{ steps.contents.outputs.value }}
+            ${{ inputs.package-contents }}
+
+          scripts: ${{ inputs.scripts }}
+          depends: ${{ inputs.package-depends }}
+          conflicts: ${{ inputs.package-conflicts }}
+          replaces: ${{ inputs.package-replaces }}
+          provides: ${{ inputs.package-provides }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-packages-${{ inputs.arch }}
+          retention-days: 7
+          compression-level: 9
+          path: dist

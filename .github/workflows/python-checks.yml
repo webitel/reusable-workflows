@@ -1,0 +1,160 @@
+name: Checks
+
+on:
+  workflow_call:
+    inputs:
+      changes:
+        type: string
+        required: false
+        default: '["python", "dependencies", "workflows"]'
+        description: JSON array of changed categories (e.g., ["python", "dependencies", "workflows"])
+
+jobs:
+  lint:
+    name: Lint code
+    if: contains(fromJSON(inputs.changes), 'python') || contains(fromJSON(inputs.changes), 'dependencies')
+    runs-on: [ arc-python-runner-set ]
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Check lockfile
+        run: uv lock --check
+
+      - name: Check formatting
+        if: ${{ !cancelled() }}
+        run: uv run --frozen ruff format --check --output-format=github
+
+      - name: Run ruff
+        if: ${{ !cancelled() }}
+        run: uv run --frozen ruff check --output-format=github
+
+  types:
+    name: Type check
+    if: contains(fromJSON(inputs.changes), 'python') || contains(fromJSON(inputs.changes), 'dependencies')
+    runs-on: [ arc-python-runner-set ]
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Checkout shared-actions (for matcher)
+        uses: actions/checkout@v6
+        with:
+          repository: webitel/reusable-workflows
+          path: .shared-actions
+          ref: v2
+
+      - name: Register mypy problem matcher
+        run: |
+          echo "::add-matcher::.shared-actions/.github/problem-matchers/python/mypy.json"
+
+      - name: Run mypy
+        run: uv run --frozen mypy
+
+  test:
+    name: Unit testing
+    if: contains(fromJSON(inputs.changes), 'python') || contains(fromJSON(inputs.changes), 'dependencies')
+    runs-on: [ arc-python-runner-set ]
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Run all tests
+        run: uv run --frozen pytest --junitxml=report.xml
+
+      - name: Test Summary
+        if: always()
+        uses: test-summary/action@v2.4
+        with:
+          paths: report.xml
+
+  vulnerabilities:
+    name: Vulnerabilities
+    if: contains(fromJSON(inputs.changes), 'dependencies')
+    runs-on: [ arc-runner-set ]
+    permissions:
+      security-events: write
+
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Run osv-scanner and save to file
+        run: osv-scanner scan source --lockfile uv.lock --format sarif --output-file report.sarif || [ $? -eq 1 ]
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: report.sarif
+
+  codeql-matrix:
+    name: CodeQL matrix
+    runs-on: [ arc-runner-set ]
+    if: github.event.repository.private == false
+    outputs:
+      languages: ${{ steps.build.outputs.languages }}
+
+    steps:
+      - name: Build CodeQL language matrix from changes
+        id: build
+        env:
+          CHANGES: ${{ inputs.changes }}
+
+        run: |
+          languages='[]'
+          if echo "$CHANGES" | jq -e 'any(. == "python" or . == "dependencies")' > /dev/null 2>&1; then
+            languages=$(echo "$languages" | jq -c '. + [{"language": "python", "build-mode": "none"}]')
+          fi
+
+          if echo "$CHANGES" | jq -e 'any(. == "workflows")' > /dev/null 2>&1; then
+            languages=$(echo "$languages" | jq -c '. + [{"language": "actions", "build-mode": "none"}]')
+          fi
+
+          echo "languages=$languages" >> "$GITHUB_OUTPUT"
+
+  analyze:
+    name: CodeQL analyze (${{ matrix.language }})
+    needs: [ codeql-matrix ]
+    runs-on: [ arc-python-runner-set ]
+    if: github.event.repository.private == false && needs.codeql-matrix.outputs.languages != '[]'
+    permissions:
+      security-events: write
+
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.codeql-matrix.outputs.languages) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{matrix.language}}"

@@ -105,31 +105,59 @@ jobs:
           sarif_file: report.sarif
           category: npm-audit
 
-      - name: Fail on high or critical vulnerabilities
+      - name: Report vulnerabilities and fail
         if: always() && steps.sarif.outputs.has-failures == 'true'
-        env:
-          MAX_SEVERITY: ${{ steps.sarif.outputs.max-severity }}
-          FINDINGS: ${{ steps.sarif.outputs.result-count }}
-        run: |
-          report="$(jq -r '
-            .vulnerabilities // {}
-            | to_entries[]
-            | .key as $package
-            | (.value.severity // "info") as $package_severity
-            | (.value.via // []) as $via
-            | [ $via[] | select(type == "object") ] as $advisories
-            | [ $via[] | select(type == "string") ] as $chains
-            | "\($package) (\($package_severity)):",
-              ( $advisories[]
-                | "  - [\((.severity // "info") | ascii_upcase)] \(.title // .url // .name // "unknown vulnerability")\(if .url then " (\(.url))" else "" end)"
-              ),
-              ( if ($chains | length) > 0 then "  - via " + ($chains | join(", ")) else empty end )
-          ' audit.json)"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
 
-          printf '%s\n\n%s\n' "npm audit found ${MAX_SEVERITY} vulnerabilities (${FINDINGS} packages affected):" "$report"
+            const RANK = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };
+            const THRESHOLD = 'high';
+            const EMOJI = { critical: '🔴', high: '🟠', moderate: '🟡', low: '⚪', info: '⚪' };
+            const rank = (s) => RANK[String(s || '').toLowerCase()] ?? 0;
+            const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const blocks = (s) => rank(s) >= rank(THRESHOLD);
 
-          echo "::error title=npm audit::Found ${MAX_SEVERITY} vulnerabilities in ${FINDINGS} package(s)."
-          exit 1
+            const report = JSON.parse(fs.readFileSync('audit.json', 'utf8'));
+            const entries = Object.entries(report.vulnerabilities || {});
+            const blocking = entries.filter(([, v]) => blocks(v.severity));
+            const maxSeverity = entries.reduce((m, [, v]) => (rank(v.severity) > rank(m) ? v.severity : m), 'none');
+
+            // Flatten to one row per advisory; transitive-only packages become a single "via <source>" row.
+            const rows = [];
+            for (const [pkg, v] of entries) {
+              const advisories = (v.via || []).filter((x) => typeof x === 'object');
+              const chains = (v.via || []).filter((x) => typeof x === 'string');
+              if (advisories.length) {
+                for (const a of advisories) {
+                  rows.push({ pkg, sev: a.severity || 'info', title: a.title || a.name || 'unknown vulnerability', url: a.url || null });
+                }
+              } else if (chains.length) {
+                rows.push({ pkg, sev: v.severity || 'info', title: `via ${chains.join(', ')}`, url: null });
+              }
+            }
+            rows.sort((a, b) => rank(b.sev) - rank(a.sev));
+
+            const label = (s) => `${EMOJI[String(s).toLowerCase()] || ''} ${String(s).toUpperCase()}${blocks(s) ? ' ⛔' : ''}`;
+            const cell = (r) => (r.url ? `<a href="${esc(r.url)}">${esc(r.title)}</a>` : esc(r.title));
+
+            await core.summary
+              .addHeading('🔒 npm audit', 2)
+              .addRaw(`Found vulnerabilities in <strong>${entries.length}</strong> package(s); <strong>${blocking.length}</strong> at or above the <code>${THRESHOLD}</code> threshold (highest severity: <strong>${maxSeverity}</strong>). Rows marked ⛔ fail the build.`)
+              .addTable([
+                [{ data: 'Severity', header: true }, { data: 'Package', header: true }, { data: 'Advisory', header: true }],
+                ...rows.map((r) => [label(r.sev), esc(r.pkg), cell(r)]),
+              ])
+              .write();
+
+            // Plain-text mirror for the step log.
+            core.info(`npm audit found vulnerabilities in ${entries.length} package(s); ${blocking.length} at or above ${THRESHOLD} (highest severity: ${maxSeverity}):`);
+            for (const r of rows) {
+              core.info(`${blocks(r.sev) ? '⛔' : '  '} [${String(r.sev).toUpperCase()}] ${r.pkg}: ${r.title}${r.url ? ` (${r.url})` : ''}`);
+            }
+
+            core.setFailed(`npm audit found ${maxSeverity} vulnerabilities: ${blocking.length} of ${entries.length} package(s) at or above ${THRESHOLD}.`);
 
   codeql-matrix:
     name: CodeQL matrix
