@@ -3,6 +3,15 @@ name: Version
 on:
   workflow_call:
     inputs:
+      versioning:
+        type: string
+        required: false
+        default: calver
+        description: |
+          Versioning strategy:
+            - calver: version follows the product release branches (vYY.M); the development branch builds the next release line.
+            - semver: version follows git tags (vX.Y.Z); any other ref builds on top of the latest tag reachable from HEAD.
+
       development-branch:
         type: string
         required: false
@@ -83,26 +92,76 @@ jobs:
 
       - name: For each git ref find the latest release branch
         id: latest-release-branch
+        if: inputs.versioning == 'calver'
         uses: webitel/reusable-workflows/actions/check-latest@check-latest-v1.0.2
+
+      - name: Find the latest semver tag reachable from HEAD
+        id: latest-tag
+        if: inputs.versioning == 'semver'
+        shell: bash
+        run: |
+          latest_tag="$(git tag --merged HEAD --sort=-v:refname \
+            | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
+            | head -n 1 || true)"
+
+          echo "Latest semver tag: ${latest_tag:-none}"
+          echo "tag=$latest_tag" >> "$GITHUB_OUTPUT"
 
       - name: Get version
         id: version
         uses: actions/github-script@v8
         env:
+          VERSIONING: ${{ inputs.versioning }}
           DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
           TRIGGERED_BRANCH: ${{ inputs.triggered-branch }}
           LATEST_RELEASE_BRANCH: ${{ steps.latest-release-branch.outputs.version }}
+          LATEST_TAG: ${{ steps.latest-tag.outputs.tag }}
 
         with:
           script: |
+            const versioning = process.env.VERSIONING;
             const developmentBranch = process.env.DEVELOPMENT_BRANCH;
             const triggeredBranch = process.env.TRIGGERED_BRANCH;
             const latestReleaseBranch = process.env.LATEST_RELEASE_BRANCH;
-            
-            console.log(`📋 Development branch: ${developmentBranch}`);
-            console.log(`🔀 Triggered branch: ${triggeredBranch}`);
-            console.log(`🏷️ Latest release branch: ${latestReleaseBranch || 'none'}`);
-            
+            const latestTag = process.env.LATEST_TAG;
+
+            console.log(`🧭 Versioning: ${versioning}`);
+
+            function parseSemverTag(tagName) {
+              if (!tagName) return null;
+
+              const match = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(tagName);
+              if (!match) return null;
+
+              return `${match[1]}.${match[2]}.${match[3]}`;
+            }
+
+            function resolveSemver() {
+              console.log(`🔀 Triggered ref: ${context.ref}`);
+              console.log(`🏷️ Latest tag: ${latestTag || 'none'}`);
+
+              if (context.ref.startsWith('refs/tags/')) {
+                const tag = context.ref.slice('refs/tags/'.length);
+                const version = parseSemverTag(tag);
+                if (!version) {
+                  throw new Error(`Unsupported tag "${tag}". Expected release tag in format vX.Y.Z.`);
+                }
+
+                console.log('🚀 Processing release build');
+                console.log(`📦 Using version from triggered tag: ${tag}`);
+                return version;
+              }
+
+              console.log('🔨 Processing development build');
+              if (!latestTag) {
+                console.log('🌱 No release tag found, using 0.0.0');
+                return '0.0.0';
+              }
+
+              console.log(`📦 Using version of the latest tag: ${latestTag}`);
+              return parseSemverTag(latestTag);
+            }
+
             function parseReleaseBranch(branchName) {
               if (!branchName) return null;
 
@@ -141,24 +200,28 @@ jobs:
               return `${release.year.toString().padStart(2, '0')}.${release.month + 1}`;
             }
             
-            let version;
-            
-            if (triggeredBranch === developmentBranch) {
-              console.log('🔨 Processing development build');
-            
-              if (latestReleaseBranch) {
-                const release = parseReleaseBranch(latestReleaseBranch);
-                if (!release) {
-                  throw new Error(`Latest release branch "${latestReleaseBranch}" is invalid`);
+            function resolveCalver() {
+              console.log(`📋 Development branch: ${developmentBranch}`);
+              console.log(`🔀 Triggered branch: ${triggeredBranch}`);
+              console.log(`🏷️ Latest release branch: ${latestReleaseBranch || 'none'}`);
+
+              if (triggeredBranch === developmentBranch) {
+                console.log('🔨 Processing development build');
+
+                if (latestReleaseBranch) {
+                  const release = parseReleaseBranch(latestReleaseBranch);
+                  if (!release) {
+                    throw new Error(`Latest release branch "${latestReleaseBranch}" is invalid`);
+                  }
+
+                  console.log(`📦 Using next version after latest release branch: ${latestReleaseBranch}`);
+                  return getNextDevelopmentVersion(latestReleaseBranch);
                 }
 
-                console.log(`📦 Using next version after latest release branch: ${latestReleaseBranch}`);
-                version = getNextDevelopmentVersion(latestReleaseBranch);
-              } else {
                 console.log('📅 No release branch found, using date-based version');
-                version = getCurrentDateVersion();
+                return getCurrentDateVersion();
               }
-            } else {
+
               const release = parseReleaseBranch(triggeredBranch);
               if (!release) {
                 throw new Error(
@@ -169,8 +232,15 @@ jobs:
 
               console.log('🚀 Processing release build');
               console.log(`📦 Using version from triggered branch: ${triggeredBranch}`);
-              version = release.normalized;
+              return release.normalized;
             }
+
+            const resolvers = { calver: resolveCalver, semver: resolveSemver };
+            if (!Object.hasOwn(resolvers, versioning)) {
+              throw new Error(`Unsupported versioning "${versioning}". Expected one of: ${Object.keys(resolvers).join(', ')}.`);
+            }
+
+            const version = resolvers[versioning]();
 
             console.log(`✨ Final version: ${version}`);
             core.setOutput('version', version);
@@ -181,4 +251,5 @@ jobs:
         with:
           sha: ${{ github.sha }}
           version: ${{ format('{0}-{1}', steps.version.outputs.version, github.run_number) }}
-          release-line: ${{ steps.version.outputs.version }}
+          # semver builds live outside the product release lines, so they share a single "main" line
+          release-line: ${{ inputs.versioning == 'semver' && 'main' || steps.version.outputs.version }}
