@@ -3,6 +3,14 @@ name: Checks
 on:
   workflow_call:
     inputs:
+      cgo-enabled:
+        type: boolean
+        required: false
+        default: false
+        description: |
+          Build with cgo. The runner image ships gcc, the arm64 cross toolchain and the C libraries (e.g., libsystemd-dev).
+          Set explicitly either way: Go would enable cgo on its own once gcc is on PATH.
+
       generated-code:
         type: string
         required: false
@@ -14,6 +22,9 @@ on:
         required: false
         default: '["go", "dependencies", "workflows"]'
         description: JSON array of changed categories (e.g., ["go", "dependencies", "workflows"])
+
+env:
+  CGO_ENABLED: ${{ inputs.cgo-enabled && '1' || '0' }}
 
 jobs:
   lint:
