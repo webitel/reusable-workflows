@@ -55,7 +55,7 @@ export class NFPMInstaller {
             await exec.exec('nfpm', ['--version']);
             core.info('✅ nFPM is available and ready');
         } catch (error) {
-            throw new Error('nFPM is not available. Please install nFPM or provide a version to install.');
+            throw new Error('nFPM is not available. Please install nFPM or provide a version to install.', { cause: error });
         }
     }
 
