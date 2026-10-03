@@ -143,7 +143,7 @@ export async function createSandbox() {
 
 // Minimal in-memory GitHub REST API for the endpoints the action uses.
 export async function startFakeGitHub({ remotes } = {}) {
-    const state = { pulls: [], comments: [], requests: [] }
+    const state = { pulls: [], comments: [], issues: [], requests: [] }
 
     const send = (res, status, body) => {
         res.writeHead(status, { 'content-type': 'application/json' })
@@ -181,6 +181,7 @@ export async function startFakeGitHub({ remotes } = {}) {
                 head: { ref: body.head.split(':')[1] },
                 base: { ref: body.base },
                 user: { login: 'sync-bot' },
+                created_at: new Date().toISOString(),
                 labels: [],
                 html_url: `https://github.com/${ repo }/pull/${ state.pulls.length + 1 }`
             }
@@ -204,8 +205,27 @@ export async function startFakeGitHub({ remotes } = {}) {
             return send(res, 200, pr)
         }
 
+        if (url.pathname === '/graphql') {
+            state.pinned = body.variables?.id
+            return send(res, 200, { data: { pinIssue: { issue: { id: body.variables?.id } } } })
+        }
+
+        if ((m = url.pathname.match(/^\/repos\/([^/]+)\/([^/]+)\/issues$/))) {
+            const repo = `${ m[1] }/${ m[2] }`
+            if (req.method === 'GET') return send(res, 200, state.issues.filter((i) => i.repo === repo && i.state === 'open'))
+            const issue = { repo, number: 1000 + state.issues.length, node_id: `I_${ state.issues.length }`, state: 'open', title: body.title, body: body.body }
+            state.issues.push(issue)
+            return send(res, 201, issue)
+        }
+
+        if ((m = url.pathname.match(/^\/repos\/([^/]+)\/([^/]+)\/issues\/comments\/(\d+)$/))) {
+            const comment = state.comments.find((c) => c.id === Number(m[3]))
+            Object.assign(comment, { body: body.body })
+            return send(res, 200, comment)
+        }
+
         if ((m = url.pathname.match(/^\/repos\/([^/]+)\/([^/]+)\/issues\/(\d+)\/comments$/))) {
-            const comment = { repo: `${ m[1] }/${ m[2] }`, number: Number(m[3]), body: body.body }
+            const comment = { id: state.comments.length + 1, repo: `${ m[1] }/${ m[2] }`, number: Number(m[3]), body: body.body }
             if (req.method === 'GET') return send(res, 200, state.comments.filter((c) => c.repo === comment.repo && c.number === comment.number))
             state.comments.push(comment)
             return send(res, 201, comment)

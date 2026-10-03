@@ -81,6 +81,9 @@ try {
             type: 'boolean',
             default: false
         }),
+        STATUS_ISSUE: getInput({
+            key: 'STATUS_ISSUE'
+        }),
         FILE_HEADER: getInput({
             key: 'FILE_HEADER',
             type: 'boolean',

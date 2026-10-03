@@ -1,14 +1,22 @@
 import * as core from '@actions/core'
+import * as path from 'path'
 
 import Git from './git.js'
 import { forEach, remove, setNunjucksTags } from './helpers.js'
 import { syncRepository } from './sync.js'
 import { summaryMarkdown } from './summary.js'
+import { statusComment, publishStatus } from './status.js'
+import { commitDate } from './history.js'
 
 import { parseConfig, default as config } from './config.js'
 
 const {
     SYNC_NAME,
+    CONFIG_PATH,
+    STATUS_ISSUE,
+    DRY_RUN,
+    GITHUB_REPOSITORY,
+    GITHUB_SERVER_URL,
     TMP_DIR,
     SKIP_CLEANUP,
     NUNJUCKS_BLOCK_START,
@@ -51,7 +59,16 @@ async function run() {
         try {
             const result = await syncRepository(git, item)
             if ([ 'created', 'updated' ].includes(result.status)) prUrls.push(result.pullRequest.html_url)
-            results.push({ repository, status: result.status, pullRequest: result.pullRequest?.html_url, drift: result.drift || 0 })
+            results.push({
+                repository,
+                status: result.status,
+                pullRequest: result.pullRequest?.html_url,
+                pullRequestNumber: result.pullRequest?.number,
+                pullRequestCreatedAt: result.pullRequest?.created_at,
+                drift: result.drift || 0,
+                syncedSha: result.syncedSha,
+                syncedAt: result.syncedSha ? await commitDate(process.cwd(), result.syncedSha) : undefined
+            })
 
             core.info('	')
         } catch (err) {
@@ -64,6 +81,30 @@ async function run() {
     core.setOutput('results', results)
     if (process.env.GITHUB_STEP_SUMMARY) {
         await core.summary.addRaw(summaryMarkdown(SYNC_NAME, results), true).write()
+    }
+
+    if (STATUS_ISSUE) {
+        try {
+            const [ owner, repo ] = GITHUB_REPOSITORY.split('/')
+            const comment = statusComment({
+                stream: SYNC_NAME,
+                config: path.normalize(CONFIG_PATH),
+                serverUrl: GITHUB_SERVER_URL,
+                repository: GITHUB_REPOSITORY,
+                runUrl: `${ GITHUB_SERVER_URL }/${ GITHUB_REPOSITORY }/actions/runs/${ process.env.GITHUB_RUN_ID || 0 }`,
+                sourceSha: await git.sourceSha(),
+                now: new Date()
+            }, results)
+            if (DRY_RUN) {
+                core.info(`Status comment:\n${ comment }`)
+            } else {
+                const issue = await publishStatus({ octokit: git.octokit, owner, repo, title: STATUS_ISSUE, stream: SYNC_NAME, comment })
+                core.info(`Status published to ${ GITHUB_REPOSITORY }#${ issue.number }`)
+            }
+        } catch (err) {
+            // The status issue is informational: a failure to update it must not fail the sync
+            core.warning(`Could not update the status issue: ${ err.message }`)
+        }
     }
 
     // If we created any PRs, set their URLs as the output

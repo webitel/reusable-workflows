@@ -1,4 +1,4 @@
-const LABELS = {
+export const LABELS = {
     'created': '🆕 created',
     'updated': '🔄 updated',
     'unchanged': '⏸️ unchanged',
@@ -10,7 +10,7 @@ const LABELS = {
     'failed': '❌ failed'
 }
 
-const cell = (text) => String(text).replace(/\|/g, '\\|').replace(/\n/g, ' ')
+export const cell = (text) => String(text).replace(/\|/g, '\\|').replace(/\n/g, ' ')
 
 /**
  * Markdown table of the sync results of one run.

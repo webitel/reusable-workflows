@@ -159,13 +159,19 @@ async function guardForeignCommits(git, pullRequest) {
 
 /**
  * Syncs the files of one target repository in a single commit.
- * Returns { status, pullRequest, drift }, drift being the number of overwritten local changes and status one of
+ * Returns { status, pullRequest, drift, syncedSha }: drift is the number of overwritten local changes, syncedSha the
+ * source commit the base branch matches after this run (when known), and status one of
  *   up-to-date, dry-run, pushed (SKIP_PR),
  *   created / updated (pull request), unchanged (open pull request already has this content),
  *   closed (open pull request no longer needed), skipped (pull request branch has foreign commits).
  */
 export async function syncRepository(git, item) {
     await git.initRepo(item.repo)
+
+    const manifestFile = manifestPath(SYNC_NAME)
+    const previousManifest = await readManifest(path.join(git.workingDir, manifestFile))
+    // Source commit the base branch is synced to
+    const syncedSha = previousManifest?.source.sha
 
     let existingPr
     if (SKIP_PR === false) {
@@ -174,12 +180,10 @@ export async function syncRepository(git, item) {
         existingPr = OVERWRITE_EXISTING_PR ? await git.findExistingPr() : undefined
         if (existingPr) {
             core.info(`Found existing PR ${ existingPr.number }`)
-            if (await guardForeignCommits(git, existingPr)) return { status: 'skipped', pullRequest: existingPr }
+            if (await guardForeignCommits(git, existingPr)) return { status: 'skipped', pullRequest: existingPr, syncedSha }
         }
     }
 
-    const manifestFile = manifestPath(SYNC_NAME)
-    const previousManifest = await readManifest(path.join(git.workingDir, manifestFile))
 
     // Local edits of managed files are overwritten by the sync: report them, or refuse with ON_DRIFT=fail
     const drift = previousManifest ? await findDrift(git.workingDir, previousManifest) : []
@@ -204,7 +208,7 @@ export async function syncRepository(git, item) {
     const fileChanges = (await git.changedFiles()).filter(({ file }) => file !== manifestFile)
     if (fileChanges.length === 0 && previousManifest !== undefined && sameFiles(previousManifest.files, manifestFiles)) {
         core.info('File(s) already up to date')
-        if (!existingPr) return { status: 'up-to-date', drift: drift.length }
+        if (!existingPr) return { status: 'up-to-date', drift: drift.length, syncedSha }
 
         core.info(`Closing PR #${ existingPr.number }: nothing left to sync`)
         if (DRY_RUN === false) {
@@ -212,7 +216,7 @@ export async function syncRepository(git, item) {
             await git.commentPr(closedComment({ serverUrl: GITHUB_SERVER_URL, repository: GITHUB_REPOSITORY, runUrl: runUrl(), history }))
             await git.closePr()
         }
-        return { status: 'closed', pullRequest: existingPr, drift: drift.length }
+        return { status: 'closed', pullRequest: existingPr, drift: drift.length, syncedSha }
     }
 
     await fs.promises.mkdir(path.dirname(path.join(git.workingDir, manifestFile)), { recursive: true })
@@ -257,14 +261,14 @@ export async function syncRepository(git, item) {
 
     if (existingPr && await openPrMatches(git, { files, manifestFile, manifestFiles, previousManifest })) {
         core.info(`PR #${ existingPr.number } already contains these changes`)
-        return { status: 'unchanged', pullRequest: existingPr, drift: drift.length }
+        return { status: 'unchanged', pullRequest: existingPr, drift: drift.length, syncedSha }
     }
 
     if (DRY_RUN) {
         core.warning('Dry run, no changes will be pushed')
         core.info(`Commit message:\n${ message }`)
         if (SKIP_PR === false) core.info(`Pull request body:\n${ pullRequestBody(context) }`)
-        return { status: 'dry-run', drift: drift.length }
+        return { status: 'dry-run', drift: drift.length, syncedSha }
     }
 
     await git.commit(message)
@@ -272,7 +276,7 @@ export async function syncRepository(git, item) {
     core.info(`Pushing changes to target repository`)
     await git.push()
 
-    if (SKIP_PR) return { status: 'pushed', drift: drift.length }
+    if (SKIP_PR) return { status: 'pushed', drift: drift.length, syncedSha: history.to }
 
     const previousState = parseState(existingPr?.body)
     const pullRequest = await git.createOrUpdatePr(syncSubject(context), pullRequestBody(context))
@@ -280,5 +284,5 @@ export async function syncRepository(git, item) {
     if (existingPr) await git.commentPr(journalComment(context, previousState))
     await decoratePullRequest(git)
 
-    return { status: existingPr ? 'updated' : 'created', pullRequest, drift: drift.length }
+    return { status: existingPr ? 'updated' : 'created', pullRequest, drift: drift.length, syncedSha }
 }

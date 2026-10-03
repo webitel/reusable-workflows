@@ -37,6 +37,11 @@ inputs:
     description: |
       Delete files listed in the target's manifest that the sync config no longer produces. Files whose entry switched to replace: false or whose source is missing are kept. Defaults to true
 
+  STATUS_ISSUE:
+    required: false
+    description: |
+      Title of a status issue in the source repository. When set, every run updates this stream's comment in it (created and pinned on first use) with the result of each target repository. The token needs issues: write on the source repository. Defaults to none
+
   FILE_HEADER:
     required: false
     description: |

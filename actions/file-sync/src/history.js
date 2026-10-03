@@ -59,3 +59,12 @@ export function jiraKeys(subjects) {
     }
     return keys
 }
+
+// Committer date (YYYY-MM-DD) of a source commit, or undefined when it is not in the checkout
+export async function commitDate(cwd, sha) {
+    try {
+        return await git(cwd, 'log', '-1', '--format=%cs', sha)
+    } catch {
+        return undefined
+    }
+}
