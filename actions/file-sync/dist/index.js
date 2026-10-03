@@ -42506,8 +42506,80 @@ async function findDrift(repoDir, manifest) {
 }
 
 const REPLACE_DEFAULT = true;
-const TEMPLATE_DEFAULT = false;
 const DELETE_ORPHANED_DEFAULT = false;
+const CONFIG_KEYS = ["defaults", "files", "repos"];
+function parseRepoName(fullRepo, serverUrl) {
+  let host = new URL(serverUrl).host;
+  if (fullRepo.startsWith("http")) {
+    const url = new URL(fullRepo);
+    host = url.host;
+    fullRepo = url.pathname.replace(/^\/+/, "");
+    info("Using custom host");
+  }
+  const user = fullRepo.split("/")[0];
+  const name = fullRepo.split("/")[1].split("@")[0];
+  const branch = fullRepo.split("@")[1] || "default";
+  return {
+    fullName: `${host}/${user}/${name}`,
+    uniqueName: `${host}/${user}/${name}@${branch}`,
+    host,
+    user,
+    name,
+    branch
+  };
+}
+function parseExclude(text, src) {
+  if (text === void 0 || typeof text !== "string") return void 0;
+  const files = text.split("\n").filter((i) => i);
+  return files.map((file) => path.join(src, file));
+}
+function parseFile(item, template) {
+  if (typeof item === "string") item = { source: item };
+  if (item.source === void 0) {
+    warning("Warn: No source files specified");
+    return void 0;
+  }
+  return {
+    source: item.source,
+    dest: item.dest || item.source,
+    template: template(item),
+    replace: item.replace === void 0 ? REPLACE_DEFAULT : item.replace,
+    deleteOrphaned: item.deleteOrphaned === void 0 ? DELETE_ORPHANED_DEFAULT : item.deleteOrphaned,
+    header: item.header !== false,
+    exclude: parseExclude(item.exclude, item.source)
+  };
+}
+const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+function deepMerge(base, override) {
+  if (!isObject(base) || !isObject(override)) return override === void 0 ? base : override;
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(override)) merged[key] = deepMerge(base[key], value);
+  return merged;
+}
+function matches(when, vars) {
+  if (when === void 0) return true;
+  if (Array.isArray(when)) return when.every((condition) => matches(condition, vars));
+  const negate = String(when).startsWith("!");
+  const value = String(when).replace(/^!/, "").split(".").reduce((v, key) => isObject(v) ? v[key] : void 0, vars);
+  return negate ? !value : Boolean(value);
+}
+function parseSyncConfig(config, { serverUrl }) {
+  for (const key of Object.keys(config || {})) {
+    if (!CONFIG_KEYS.includes(key)) throw new Error(`unknown key "${key}" in the sync config`);
+  }
+  if (!isObject(config?.repos)) throw new Error("the sync config has no repos");
+  return Object.entries(config.repos).map(([name, repoVars]) => {
+    const vars = deepMerge(config.defaults || {}, repoVars || {});
+    const template = (item) => {
+      if (isObject(item.template)) return deepMerge(vars, item.template);
+      if (item.template === true || item.template === void 0 && item.source.endsWith(".njk")) return vars;
+      return false;
+    };
+    const files = (config.files || []).filter((item) => matches(item.when, vars)).map((item) => parseFile(item, template)).filter(Boolean);
+    return { repo: parseRepoName(name, serverUrl), files };
+  });
+}
+
 let context;
 try {
   let isInstallationToken = false;
@@ -42662,89 +42734,9 @@ try {
   setFailed(err.message);
   process.exit(1);
 }
-const parseRepoName = (fullRepo) => {
-  let host = new URL(context.GITHUB_SERVER_URL).host;
-  if (fullRepo.startsWith("http")) {
-    const url = new URL(fullRepo);
-    host = url.host;
-    fullRepo = url.pathname.replace(/^\/+/, "");
-    info("Using custom host");
-  }
-  const user = fullRepo.split("/")[0];
-  const name = fullRepo.split("/")[1].split("@")[0];
-  const branch = fullRepo.split("@")[1] || "default";
-  return {
-    fullName: `${host}/${user}/${name}`,
-    uniqueName: `${host}/${user}/${name}@${branch}`,
-    host,
-    user,
-    name,
-    branch
-  };
-};
-const parseExclude = (text, src) => {
-  if (text === void 0 || typeof text !== "string") return void 0;
-  const files = text.split("\n").filter((i) => i);
-  return files.map((file) => path.join(src, file));
-};
-const parseFiles = (files) => {
-  return files.map((item) => {
-    if (typeof item === "string")
-      item = { source: item };
-    if (item.source !== void 0) {
-      return {
-        source: item.source,
-        dest: item.dest || item.source,
-        template: item.template === void 0 ? TEMPLATE_DEFAULT : item.template,
-        replace: item.replace === void 0 ? REPLACE_DEFAULT : item.replace,
-        deleteOrphaned: item.deleteOrphaned === void 0 ? DELETE_ORPHANED_DEFAULT : item.deleteOrphaned,
-        header: item.header !== false,
-        exclude: parseExclude(item.exclude, item.source)
-      };
-    }
-    warning("Warn: No source files specified");
-  });
-};
-async function parseConfig() {
-  const fileContent = await fs.promises.readFile(context.CONFIG_PATH);
-  const configObject = load(fileContent.toString());
-  const result = {};
-  Object.keys(configObject).forEach((key) => {
-    if (key === "definitions") {
-      return;
-    }
-    if (key === "group") {
-      const rawObject = configObject[key];
-      const groups = Array.isArray(rawObject) ? rawObject : [rawObject];
-      groups.forEach((group) => {
-        const repos = typeof group.repos === "string" ? group.repos.split("\n").map((n) => n.trim()).filter((n) => n) : group.repos;
-        repos.forEach((name) => {
-          const files = parseFiles(group.files);
-          const repo = parseRepoName(name);
-          if (result[repo.uniqueName] !== void 0) {
-            result[repo.uniqueName].files.push(...files);
-            return;
-          }
-          result[repo.uniqueName] = {
-            repo,
-            files
-          };
-        });
-      });
-    } else {
-      const files = parseFiles(configObject[key]);
-      const repo = parseRepoName(key);
-      if (result[repo.uniqueName] !== void 0) {
-        result[repo.uniqueName].files.push(...files);
-        return;
-      }
-      result[repo.uniqueName] = {
-        repo,
-        files
-      };
-    }
-  });
-  return Object.values(result);
+async function parseConfig(configPath = context.CONFIG_PATH) {
+  const fileContent = await fs.promises.readFile(configPath);
+  return parseSyncConfig(load(fileContent.toString()), { serverUrl: context.GITHUB_SERVER_URL });
 }
 var config = context;
 

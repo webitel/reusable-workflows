@@ -6,7 +6,7 @@ import { createSandbox } from './support/harness.js'
 import { serializeManifest, sha256 } from '../src/manifest.js'
 
 const CONFIG = `
-webitel/target:
+files:
   - source: configs/a.yml
     dest: a.yml
   - source: configs/dir/
@@ -14,6 +14,8 @@ webitel/target:
   - source: configs/once.yml
     dest: once.yml
     replace: false
+repos:
+  webitel/target:
 `
 
 const SOURCE_FILES = {

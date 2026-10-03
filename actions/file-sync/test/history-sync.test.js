@@ -4,9 +4,11 @@ import assert from 'node:assert/strict'
 import { createSandbox } from './support/harness.js'
 
 const CONFIG = `
-webitel/target:
+files:
   - source: golang/a.yml
     dest: a.yml
+repos:
+  webitel/target:
 `
 
 test('warns when the source checkout is shallow', async () => {

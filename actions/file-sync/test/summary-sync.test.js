@@ -6,12 +6,12 @@ import * as path from 'path'
 import { createSandbox } from './support/harness.js'
 
 const CONFIG = `
-webitel/target:
+files:
   - source: golang/a.yml
     dest: a.yml
-webitel/missing:
-  - source: golang/a.yml
-    dest: a.yml
+repos:
+  webitel/target:
+  webitel/missing:
 `
 
 test('writes a job summary and a results output for every repository', async () => {

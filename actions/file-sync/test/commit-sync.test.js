@@ -4,11 +4,13 @@ import assert from 'node:assert/strict'
 import { createSandbox } from './support/harness.js'
 
 const CONFIG = `
-webitel/target:
+files:
   - source: golang/a.yml
     dest: a.yml
   - source: golang/b.yml
     dest: b.yml
+repos:
+  webitel/target:
 `
 const BRANCH = 'repo-sync/source/default'
 

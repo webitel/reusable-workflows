@@ -6,7 +6,7 @@ import { createSandbox } from './support/harness.js'
 
 const TARGET = 'webitel/target'
 const entry = (name, extra = '') => `  - source: golang/${ name }\n    dest: ${ name }\n${ extra }`
-const config = (...entries) => `webitel/target:\n${ entries.join('') }`
+const config = (...entries) => `files:\n${ entries.join('') }repos:\n  webitel/target:\n`
 
 async function syncedAB() {
     const sandbox = await createSandbox()

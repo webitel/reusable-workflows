@@ -7,7 +7,7 @@ import { sha256 } from '../src/manifest.js'
 
 const TARGET = 'webitel/target'
 const CONFIG = `
-webitel/target:
+files:
   - source: golang/a.yml
     dest: a.yml
   - source: golang/pr.yml.njk
@@ -17,6 +17,8 @@ webitel/target:
   - source: golang/.idea/
     dest: .idea/
     header: false
+repos:
+  webitel/target:
 `
 const FILES = {
     '.github/sync.yml': CONFIG,

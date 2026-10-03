@@ -12,20 +12,20 @@ With [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions
 
 ## 🚀 Features
 
-- Keep GitHub Actions workflow files in sync across all your repositories
-- Sync any file or a whole directory to as many repositories as you want
-- Easy configuration for any use case
-- Create a pull request in the target repo so you have the last say on what gets merged
-- Automatically label pull requests to integrate with other actions like [automerge-action](https://github.com/pascalgn/automerge-action)
-- Assign users to the pull request
-- Render [Jinja](https://jinja.palletsprojects.com/)-style templates as use variables thanks to [Nunjucks](https://mozilla.github.io/nunjucks/)
+- Keep workflows, configs or whole directories in sync across many repositories from one config: shared files plus per-repository template variables
+- One pull request per target repository, titled after the source commits and their Jira keys, kept up to date until merged
+- A manifest of managed files in every target: drift detection and removal of files dropped from the config
+- Optional "DO NOT EDIT" headers in synced files, a job summary and a pinned status issue
+- Render [Jinja](https://jinja.palletsprojects.com/)-style templates with [Nunjucks](https://mozilla.github.io/nunjucks/)
+- Label, assign and request reviews on pull requests
 
 ## ⬆️ Upgrading from v2
 
 v3 changes how sync commits and pull requests look and adds a manifest to every target repository:
 
 - **Removed inputs**: `COMMIT_EACH_FILE`, `ORIGINAL_MESSAGE`, `COMMIT_AS_PR_TITLE`, `COMMIT_PREFIX`, `COMMIT_BODY`. Each sync is one commit whose subject is built from the source commits; use `TITLE_PREFIX` to change its prefix.
-- **New inputs**: `TITLE_PREFIX`, `SYNC_NAME`, `FILE_HEADER`, `ON_DRIFT`, `DELETE_REMOVED`.
+- **New inputs**: `TITLE_PREFIX`, `SYNC_NAME`, `FILE_HEADER`, `ON_DRIFT`, `DELETE_REMOVED`, `STATUS_ISSUE`.
+- **New config format**: `defaults` + `files` + `repos` (see [Sync Configuration](#%EF%B8%8F-sync-configuration)) replaces per-repository file lists, `group` and `definitions`. Configs in the v2 format are rejected.
 - **Check out the source with `fetch-depth: 0`**, otherwise source commits cannot be listed.
 - **First run**: every target repository gets one pull request that adds `.github/file-sync/<SYNC_NAME>.yml` (and the headers, with `FILE_HEADER: true`). Merge these before relying on the source commit ranges in later pull requests.
 - An open v2 sync pull request is updated in place; its commits are recognized as file-sync's own.
@@ -79,60 +79,21 @@ If using an installation token you are required to provide the `GIT_EMAIL` and `
 
 ### Sync configuration
 
-The last step is to create a `.yml` file in the `.github` folder of your repository and specify what file(s) to sync to which repositories:
+The last step is to create a `.yml` file in the `.github` folder of your repository that lists the files and the repositories to sync them to:
 
 **.github/sync.yml**
 
 ```yml
-user/repository:
-  - .github/workflows/test.yml
-  - .github/workflows/lint.yml
+files:
+  - source: workflows/lint.yml
+    dest: .github/workflows/lint.yml
 
-user/repository2:
-  - source: workflows/stale.yml
-    dest: .github/workflows/stale.yml
+repos:
+  user/repository:
+  user/repository2:
 ```
 
-More info on how to specify what files to sync where [below](#%EF%B8%8F-sync-configuration).
-
-### YAML anchors via `definitions` (advanced)
-
-If you want to avoid repeating the same file lists, you can use YAML anchors and aliases. You can declare your anchors under a top-level `definitions` key. The action will ignore the `definitions` key when parsing, so it won’t be treated as a repo name or a group.
-
-Example (anchors used with direct repo entries):
-
-```yml
-# .github/sync.yml
-
-definitions:
-  common_files: &common_files
-    - .github/workflows/test.yml
-    - source: workflows/stale.yml
-      dest: .github/workflows/stale.yml
-
-user/repository: *common_files
-user/repository2: *common_files
-```
-
-Example (anchors used with groups):
-
-```yml
-# .github/sync.yml
-
-definitions:
-  group_files: &group_files
-    - .github/workflows/lint.yml
-    - source: workflows/stale.yml
-      dest: .github/workflows/stale.yml
-
-group:
-  - repos: |
-      user/repo1
-      user/repo2
-    files: *group_files
-```
-
-This feature relies on standard YAML anchor/alias behavior and is supported by the configuration parser. Use it to keep your sync configuration DRY while retaining full readability.
+More info on the format [below](#%EF%B8%8F-sync-configuration).
 
 ## ⚙️ Action Inputs
 
@@ -182,88 +143,97 @@ The same results are written as a table to the job summary.
 
 ## 🛠️ Sync Configuration
 
-To tell [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) what files to sync where, you have to create a `sync.yml` file in the `.github` directory of your main repository (see [action-inputs](#%EF%B8%8F-action-inputs) on how to change the location).
-
-The top-level key should be used to specify the target repository in the format `username`/`repository-name`@`branch`, after that you can list all the files you want to sync to that individual repository:
+The sync config (`.github/sync.yml` by default, see `CONFIG_PATH`) describes a set of repositories that share the same files, with per-repository values for templates:
 
 ```yml
-user/repo:
-  - path/to/file.txt
-user/repo2@develop:
-  - path/to/file2.txt
+# Template variables shared by every repository
+defaults:
+  version: v2
+  branch: main
+
+# Synced to every repository below
+files:
+  - source: golang/workflows/workflow.yml.njk   # .njk files are rendered with the repository's variables
+    dest: .github/workflows/workflow.yml
+
+  - source: golang/configs/.gitignore           # other files are copied as they are
+    dest: .gitignore
+
+  - source: common/deploy/debian/
+    dest: deploy/debian/
+    when: deb                                   # only repositories with a truthy `deb`
+
+  - source: golang/.idea
+    dest: .idea
+    header: false
+
+# owner/name[@branch]: the repository's template variables, deep-merged over defaults
+repos:
+  webitel/cases:
+    name: webitel-cases
+    deb: true
+    build:
+      binary-name: webitel-cases
+
+  webitel/chat-migration-cli:
+    name: chat-migration-cli
+    versioning: semver
 ```
 
-There are multiple ways to specify which files to sync to each individual repository.
+- Adding a repository means adding one entry under `repos` (the value may be empty).
+- Only `defaults`, `files` and `repos` are allowed at the top level, so a typo fails the run instead of silently syncing nothing.
+- The list of repositories is easy to read from the config, e.g. to scope a GitHub App token: `yq -r '.repos | keys | .[] | sub("^[^/]+/"; "") | sub("@.*$"; "")' .github/sync.yml`.
 
-### List individual file(s)
+### Repositories
 
-The easiest way to sync files is the list them on a new line for each repository:
+- `owner/name` syncs to the default branch, `owner/name@branch` to another branch (the same repository can be listed with several branches).
+- A key starting with `https://` targets another host, e.g. a GitHub Enterprise Server: `https://custom.host/owner/name`.
+- The value holds the repository's template variables. They are deep-merged over `defaults`: objects are merged key by key, everything else is replaced.
+
+### File entries
+
+Each entry of `files` is a path (`- LICENSE`, synced to the same path) or an object:
+
+| Key | Description | Default |
+|---|---|---|
+| `source` | File or directory in the source repository. A directory syncs everything below it | — |
+| `dest` | Path in the target repository | `source` |
+| `when` | Sync only to repositories whose variable is truthy: `deb`, negated `!deb`, a path `build.arm`, or a list that must all hold `[ freeswitch, public ]` | every repository |
+| `template` | Render with [Nunjucks](https://mozilla.github.io/nunjucks/): `true`, or an object of extra variables merged over the repository's. Files ending with `.njk` are rendered by default; `false` copies them as they are | `.njk` files only |
+| `replace` | `false` creates the file only when it does not exist yet; the target repository owns it afterwards | `true` |
+| `exclude` | Paths below a directory `source` to skip, one per line, relative to `source`; an entry ending with `/` skips a whole folder | — |
+| `deleteOrphaned` | For a directory: delete files in `dest` that do not exist in `source` | `false` |
+| `header` | `false` skips the [generated-file header](#generated-file-header) | `true` |
 
 ```yml
-user/repo:
-  - .github/workflows/build.yml
+files:
   - LICENSE
-  - .gitignore
-```
 
-### Different destination path/filename(s)
-
-Using the `dest` option you can specify a destination path in the target repo and/or change the filename for each source file:
-
-```yml
-user/repo:
-  - source: workflows/build.yml
-    dest: .github/workflows/build.yml
-  - source: LICENSE.md
-    dest: LICENSE
-```
-
-### Sync entire directories
-
-You can also specify entire directories to sync:
-
-```yml
-user/repo:
   - source: workflows/
     dest: .github/workflows/
-```
-
-### Exclude certain files when syncing directories
-
-Using the `exclude` key you can specify files you want to exclude when syncing entire directories (#26).
-
-```yml
-user/repo:
-  - source: workflows/
-    dest: .github/workflows/
+    deleteOrphaned: true
     exclude: |
       node.yml
-      lint.yml
+      experimental/
 ```
 
-> **Note:** the exclude file path is relative to the source path. An entry ending with `/` excludes the whole folder, including nested folders; exclusions apply to templates as well
+### Templates
 
-### Don't replace existing file(s)
-
-By default if a file already exists in the target repository, it will be replaced. You can change this behaviour by setting the `replace` option to `false`:
+Templates use [Jinja](https://jinja.palletsprojects.com/)-style syntax compiled by Nunjucks; see its [template syntax](https://mozilla.github.io/nunjucks/templating.html) for variables, filters, blocks and `extends` (with a path relative to the source repository). With the repository variables from the example above:
 
 ```yml
-user/repo:
-  - source: .github/workflows/lint.yml
-    replace: false
+# golang/workflows/workflow.yml.njk
+name: Workflow ( {{ name }} )
+uses: webitel/reusable-workflows/.github/workflows/golang-build.yml@{{ version }}
 ```
 
-### Using templates
-
-#### Custom Nunjucks delimiters (optional)
-If your source files contain characters that conflict with the default Nunjucks tags, you can customize the delimiter syntax via inputs. Set any of the following inputs in the workflow step that uses the action:
+If source files contain the default tags (`{% %}`, `{{ }}`, `{# #}`) — GitHub Actions expressions do — choose other delimiters with the `NUNJUCKS_*` inputs:
 
 ```yml
 - name: Run GitHub File Sync
   uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
-    # Example: use ((* *)) for blocks, ((( ))) for variables, ((= =)) for comments
     NUNJUCKS_BLOCK_START: '((*'
     NUNJUCKS_BLOCK_END: '*))'
     NUNJUCKS_VARIABLE_START: '((('
@@ -272,105 +242,7 @@ If your source files contain characters that conflict with the default Nunjucks 
     NUNJUCKS_COMMENT_END: '=))'
 ```
 
-Defaults (when not provided) remain the standard Nunjucks tags: `{% %}` for blocks, `{{ }}` for variables, and `{# #}` for comments.
-
-You can render templates before syncing by using the [Jinja](https://jinja.palletsprojects.com/)-style template syntax. It will be compiled using [Nunjucks](https://mozilla.github.io/nunjucks/) and the output written to the specific file(s) or folder(s).
-
-Nunjucks supports variables and blocks among other things. To enable, set the `template` field to a context dictionary, or in case of no variables, `true`:
-
-```yml
-user/repo:
-  - source: src/README.md
-    template:
-      user:
-        name: 'Webitel'
-        handle: '@webitel'
-```
-
-In the source file you can then use these variables like this:
-
-```yml
-# README.md
-
-Created by {{ user.name }} ({{ user.handle }})
-```
-
-Result:
-
-```yml
-# README.md
-
-Created by Webitel (@webitel)
-```
-
-You can also use `extends` with a relative path to inherit other templates. Take a look at Nunjucks [template syntax](https://mozilla.github.io/nunjucks/templating.html) for more info.
-
-```yml
-user/repo:
-  - source: .github/workflows/child.yml
-    template: true
-```
-
-```yml
-# child.yml
-{% extends './parent.yml' %}
-
-{% block some_block %}
-This is some content
-{% endblock %}
-```
-
-### Delete orphaned files
-
-With the `deleteOrphaned` option you can choose to delete files in the target repository if they are deleted in the source repository. The option defaults to `false` and only works when [syncing entire directories](#sync-entire-directories):
-
-```yml
-user/repo:
-  - source: workflows/
-    dest: .github/workflows/
-    deleteOrphaned: true
-```
-
-It only takes effect on that specific directory.
-
-### Sync the same files to multiple repositories
-
-Instead of repeating yourself listing the same files for multiple repositories, you can create a group:
-
-```yml
-group:
-  repos: |
-    user/repo
-    user/repo1
-  files: 
-    - source: workflows/build.yml
-      dest: .github/workflows/build.yml
-    - source: LICENSE.md
-      dest: LICENSE
-```
-
-You can create multiple groups like this:
-
-```yml
-group:
-  # first group
-  - files:
-      - source: workflows/build.yml
-        dest: .github/workflows/build.yml
-      - source: LICENSE.md
-        dest: LICENSE
-    repos: |
-      user/repo1
-      user/repo2
-
-  # second group
-  - files: 
-      - source: configs/dependabot.yml
-        dest: .github/dependabot.yml
-    repos: |
-      user/repo3
-      user/repo4
-```
+Templates are rendered with autoescaping on: pass multi-line or quoted values through `| safe`.
 
 ### Sync commits and pull requests
 
@@ -463,7 +335,7 @@ name: PR ( cases )
 - Skip it per entry with `header: false`, e.g. for IDE settings that the IDE rewrites without comments:
 
 ```yml
-user/repository:
+files:
   - source: golang/.idea
     dest: .idea
     header: false
@@ -494,52 +366,9 @@ files:
 - **Drift**: a managed file whose content no longer matches its hash was edited (or deleted) in the target repository after the last sync. With `ON_DRIFT: warn` (default) the sync restores it, logs a warning and lists it under "Local changes overwritten" in the PR and in the commit message; with `ON_DRIFT: fail` the repository is skipped and the run fails.
 - Each sync config should use its own `SYNC_NAME` (the default derived from `CONFIG_PATH` already differs per config). A warning is logged when a file is listed in the manifest of another stream.
 
-### Syncing branches
-
-You can also sync different branches from the same or different repositories (#51). For example, a repository named `foo/bar` with branch `main`, and `sync.yml` contents:
-
-```yml
-group:
-  repos: |
-    foo/bar@de
-    foo/bar@es
-    foo/bar@fr
-  files:
-    - source: .github/workflows/
-      dest: .github/workflows/
-```
-
-Here all files in `.github/workflows/` will be synced from the `main` branch to the branches `de`/`es`/`fr`.
-
 ## 📖 Examples
 
 Here are a few examples to help you get started!
-
-### Basic Example
-
-**.github/sync.yml**
-
-```yml
-user/repository:
-  - LICENSE
-  - .gitignore
-```
-
-### Sync all workflow files
-
-This example will keep all your `.github/workflows` files in sync across multiple repositories:
-
-**.github/sync.yml**
-
-```yml
-group:
-  repos: |
-    user/repo1
-    user/repo2
-  files:
-    - source: .github/workflows/
-      dest: .github/workflows/
-```
 
 ### Custom labels
 
@@ -587,28 +416,6 @@ You can tell [file-sync](https://github.com/webitel/reusable-workflows/tree/main
 
     TEAM_REVIEWERS: engineering
 ```
-
-### Custom GitHub Enterprise Host
-
-If your target repository is hosted on a GitHub Enterprise Server you can specify a custom host name like this:
-
-**.github/workflows/sync.yml**
-
-```yml
-https://custom.host/user/repo:
-  - path/to/file.txt
-
-# or in a group
-
-group:
-  - files:
-      - source: path/to/file.txt
-        dest: path/to/file.txt
-    repos: |
-      https://custom.host/user/repo
-```
-
-> **Note:** The key has to start with http to indicate that you want to use a custom host.
 
 ### Different branch prefix
 

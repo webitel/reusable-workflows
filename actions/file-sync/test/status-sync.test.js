@@ -4,9 +4,11 @@ import assert from 'node:assert/strict'
 import { createSandbox } from './support/harness.js'
 
 const CONFIG = `
-webitel/target:
+files:
   - source: golang/a.yml
     dest: a.yml
+repos:
+  webitel/target:
 `
 
 test('STATUS_ISSUE keeps one comment per stream in a pinned status issue of the source repository', async (t) => {

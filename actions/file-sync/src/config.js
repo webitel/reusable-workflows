@@ -1,14 +1,10 @@
 import * as core from '@actions/core'
 import * as yaml from 'js-yaml'
 import fs from 'fs-extra'
-import * as path from 'path'
 import { getInput } from 'action-input-parser'
 
 import { manifestName } from './manifest.js'
-
-const REPLACE_DEFAULT = true
-const TEMPLATE_DEFAULT = false
-const DELETE_ORPHANED_DEFAULT = false
+import { parseSyncConfig } from './sync-config.js'
 
 let context
 
@@ -175,113 +171,10 @@ try {
     process.exit(1)
 }
 
-const parseRepoName = (fullRepo) => {
-    let host = new URL(context.GITHUB_SERVER_URL).host
+export async function parseConfig(configPath = context.CONFIG_PATH) {
+    const fileContent = await fs.promises.readFile(configPath)
 
-    if (fullRepo.startsWith('http')) {
-        const url = new URL(fullRepo)
-        host = url.host
-
-        fullRepo = url.pathname.replace(/^\/+/, '') // Remove leading slash
-
-        core.info('Using custom host')
-    }
-
-    const user = fullRepo.split('/')[0]
-    const name = fullRepo.split('/')[1].split('@')[0]
-    const branch = fullRepo.split('@')[1] || 'default'
-
-    return {
-        fullName: `${ host }/${ user }/${ name }`,
-        uniqueName: `${ host }/${ user }/${ name }@${ branch }`,
-        host,
-        user,
-        name,
-        branch
-    }
-}
-
-const parseExclude = (text, src) => {
-    if (text === undefined || typeof text !== 'string') return undefined
-
-    const files = text.split('\n').filter((i) => i)
-
-    return files.map((file) => path.join(src, file))
-}
-
-const parseFiles = (files) => {
-    return files.map((item) => {
-        if (typeof item === 'string')
-            item = { source: item }
-
-        if (item.source !== undefined) {
-            return {
-                source: item.source,
-                dest: item.dest || item.source,
-                template: item.template === undefined ? TEMPLATE_DEFAULT : item.template,
-                replace: item.replace === undefined ? REPLACE_DEFAULT : item.replace,
-                deleteOrphaned: item.deleteOrphaned === undefined ? DELETE_ORPHANED_DEFAULT : item.deleteOrphaned,
-                header: item.header !== false,
-                exclude: parseExclude(item.exclude, item.source)
-            }
-        }
-
-        core.warning('Warn: No source files specified')
-    })
-}
-
-export async function parseConfig() {
-    const fileContent = await fs.promises.readFile(context.CONFIG_PATH)
-
-    const configObject = yaml.load(fileContent.toString())
-
-    const result = {}
-
-    Object.keys(configObject).forEach((key) => {
-        if (key === 'definitions') {
-            return
-        }
-
-        if (key === 'group') {
-            const rawObject = configObject[key]
-
-            const groups = Array.isArray(rawObject) ? rawObject : [ rawObject ]
-
-            groups.forEach((group) => {
-                const repos = typeof group.repos === 'string' ? group.repos.split('\n').map((n) => n.trim()).filter((n) => n) : group.repos
-
-                repos.forEach((name) => {
-                    const files = parseFiles(group.files)
-                    const repo = parseRepoName(name)
-
-                    if (result[repo.uniqueName] !== undefined) {
-                        result[repo.uniqueName].files.push(...files)
-                        return
-                    }
-
-                    result[repo.uniqueName] = {
-                        repo,
-                        files
-                    }
-                })
-            })
-        } else {
-            const files = parseFiles(configObject[key])
-            const repo = parseRepoName(key)
-
-            if (result[repo.uniqueName] !== undefined) {
-                result[repo.uniqueName].files.push(...files)
-                return
-            }
-
-            result[repo.uniqueName] = {
-                repo,
-                files
-            }
-        }
-    })
-
-    return Object.values(result)
+    return parseSyncConfig(yaml.load(fileContent.toString()), { serverUrl: context.GITHUB_SERVER_URL })
 }
 
 export default context

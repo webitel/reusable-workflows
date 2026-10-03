@@ -4,11 +4,13 @@ import assert from 'node:assert/strict'
 import { createSandbox } from './support/harness.js'
 
 const CONFIG = `
-webitel/target:
+files:
   - source: configs/a.yml
     dest: a.yml
   - source: configs/dir/
     dest: dir/
+repos:
+  webitel/target:
 `
 
 test('pushes synced files directly to the base branch with SKIP_PR', async () => {
