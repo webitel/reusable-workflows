@@ -1,0 +1,57 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directories:
+      - /actions/file-sync
+      - /actions/nfpm-build
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: fix(deps)
+      prefix-development: chore(deps)
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /actions/backport
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: fix(deps)
+    groups:
+      go-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      go-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /actions/*
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore(deps)
+    ignore:
+      # Internal actions are versioned with per-action tag prefixes
+      # (nfpm-build-v2, backport-v1.0.2, ...) and bumped manually.
+      - dependency-name: webitel/reusable-workflows*
+    groups:
+      github-actions:
+        patterns: ["*"]
