@@ -79,7 +79,7 @@ jobs:
           git config --local --add --bool push.autoSetupRemote true
 
       - name: Run backport
-        uses: webitel/reusable-workflows/actions/backport@backport-v1.0.2
+        uses: webitel/reusable-workflows/actions/backport@backport-v1.0.3
         with:
           token: ${{ steps.app-token.outputs.token }}
 
@@ -90,4 +90,4 @@ jobs:
           repo-owner: ${{ github.repository_owner }}
           repo-name: ${{ github.event.repository.name }}
           labels-to-add: "backport"
-          binary-release-tag: "v1.0.2"
+          binary-release-tag: "v1.0.3"
