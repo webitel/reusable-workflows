@@ -48,17 +48,8 @@ try {
             key: 'IS_FINE_GRAINED',
             default: false
         }),
-        COMMIT_BODY: getInput({
-            key: 'COMMIT_BODY',
-            default: ''
-        }),
         // Read directly: action-input-parser treats an empty value as unset, which makes the prefix impossible to disable.
-        COMMIT_PREFIX: process.env.INPUT_COMMIT_PREFIX !== undefined ? process.env.INPUT_COMMIT_PREFIX.trim() : '🔄',
-        COMMIT_EACH_FILE: getInput({
-            key: 'COMMIT_EACH_FILE',
-            type: 'boolean',
-            default: true
-        }),
+        TITLE_PREFIX: process.env.INPUT_TITLE_PREFIX !== undefined ? process.env.INPUT_TITLE_PREFIX.trim() : 'chore(sync)',
         PR_LABELS: getInput({
             key: 'PR_LABELS',
             default: [ 'sync' ],
@@ -130,16 +121,6 @@ try {
         }),
         SKIP_PR: getInput({
             key: 'SKIP_PR',
-            type: 'boolean',
-            default: false
-        }),
-        ORIGINAL_MESSAGE: getInput({
-            key: 'ORIGINAL_MESSAGE',
-            type: 'boolean',
-            default: false
-        }),
-        COMMIT_AS_PR_TITLE: getInput({
-            key: 'COMMIT_AS_PR_TITLE',
             type: 'boolean',
             default: false
         }),

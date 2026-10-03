@@ -9,21 +9,6 @@ webitel/target:
     dest: a.yml
 `
 
-test('logs the source commits that changed the synced files since the last sync', async () => {
-    const sandbox = await createSandbox()
-    await sandbox.createTarget('webitel/target')
-    const anchor = await sandbox.commitSource('initial', { '.github/sync.yml': CONFIG, 'golang/a.yml': '1\n' })
-    await sandbox.runAction({ inputs: { SKIP_PR: true } })
-
-    const change = await sandbox.commitSource('feat(golang)[PE-117]: change a', { 'golang/a.yml': '2\n' })
-    await sandbox.commitSource('docs: unrelated', { 'README.md': 'docs\n' })
-    const result = await sandbox.runAction({ inputs: { SKIP_PR: true } })
-
-    assert.equal(result.failed, false, result.output)
-    assert.match(result.output, new RegExp(`Source commits ${ anchor.slice(0, 7) }\\.\\.[0-9a-f]{7}:\\n- ${ change.slice(0, 7) } feat\\(golang\\)\\[PE-117\\]: change a\\n`))
-    assert.doesNotMatch(result.output, /docs: unrelated/)
-})
-
 test('warns when the source checkout is shallow', async () => {
     const sandbox = await createSandbox()
     await sandbox.createTarget('webitel/target', {

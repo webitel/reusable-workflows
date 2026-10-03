@@ -139,12 +139,8 @@ Here are all the inputs [file-sync](https://github.com/webitel/reusable-workflow
 | `ASSIGNEES`               | Users to assign to the pull request                                                                                                            | **No**                                           | N/A                            |
 | `REVIEWERS`               | Users to request a review of the pull request from                                                                                             | **No**                                           | N/A                            |
 | `TEAM_REVIEWERS`          | Teams to request a review of the pull request from                                                                                             | **No**                                           | N/A                            |
-| `COMMIT_PREFIX`           | Prefix for commit message and pull request title, set to an empty string to disable                                                           | **No**                                           | 🔄                             |
-| `COMMIT_BODY`             | Commit message body. Will be appended to commit message, separated by two line returns.                                                        | **No**                                           | ''                             |
+| `TITLE_PREFIX`            | Prefix of the sync commit subject and PR title, followed by the Jira keys of the source commits; set to an empty string to disable          | **No**                                           | chore(sync)                    |
 | `PR_BODY`                 | Additional content to add in the PR description.                                                                                               | **No**                                           | ''                             |
-| `ORIGINAL_MESSAGE`        | Use original commit message instead. Only works if the file(s) were changed and the action was triggered by pushing a single commit.           | **No**                                           | false                          |
-| `COMMIT_AS_PR_TITLE`      | Use first line of the commit message as PR title. Only works if `ORIGINAL_MESSAGE` is `true` and working.                                      | **No**                                           | false                          |
-| `COMMIT_EACH_FILE`        | Commit each file seperately                                                                                                                    | **No**                                           | true                           |
 | `GIT_EMAIL`               | The e-mail address used to commit the synced files                                                                                             | **Only when using installation token**           | the email of the PAT used      |
 | `GIT_USERNAME`            | The username used to commit the synced files                                                                                                   | **Only when using installation token**           | the username of the PAT used   |
 | `OVERWRITE_EXISTING_PR`   | Overwrite any existing Sync PR with the new changes                                                                                            | **No**                                           | true                           |
@@ -357,6 +353,36 @@ group:
       user/repo4
 ```
 
+### Sync commits and pull requests
+
+Each sync produces one commit per target repository. Its subject names the source commits it brings, with their Jira keys (taken from bracketed lists such as `[PE-117]`):
+
+| Source commits since the last sync | Subject |
+|---|---|
+| one | `chore(sync)[PE-117]: take version metadata from prepare outputs` (the source subject without its `type(scope)[keys]:` prefix) |
+| several | `chore(sync)[PE-117,PE-118]: 2 changes from webitel/reusable-configs` |
+| unknown (first sync, shallow checkout) | `chore(sync): sync files from webitel/reusable-configs@1a2b3c4` |
+
+```
+chore(sync)[PE-117,PE-118]: 2 changes from webitel/reusable-configs
+
+Source: webitel/reusable-configs 9f8e7d6..1a2b3c4 (golang/sync.yml)
+
+Changes:
+- feat(golang)[PE-117]: take version metadata from prepare outputs (56c90e3)
+- feat(golang)[PE-118]: sync workflows to chat-migration-cli (48bb00e)
+
+Files:
+- M .github/workflows/pull-request.yml <- golang/workflows/pull-request.yml.njk
+- A .github/workflows/release-branch.yml <- common/workflows/release-branch.yml
+
+Synced-From: webitel/reusable-configs@1a2b3c4d5e6f...
+Sync-Config: golang/sync.yml
+Sync-Run: https://github.com/webitel/reusable-configs/actions/runs/123
+```
+
+The pull request uses the subject as its title; its body links the source commit range, each source commit and each source file. `TITLE_PREFIX` changes `chore(sync)`.
+
 ### Manifest of managed files
 
 Every target repository gets a manifest at `.github/file-sync/<SYNC_NAME>.yml`, written in the same commit as the synced files. It lists each managed file with its source path and the SHA-256 of its content, plus the source repository, config and commit the content comes from:
@@ -515,27 +541,6 @@ The new branch will then be `custom-branch/SOURCE_BRANCH_NAME`.
 
 > You can use `SOURCE_REPO_NAME` in your custom branch prefix as well and it will be replaced with the actual repo name
 
-### Custom commit body
-
-You can specify a custom commit body. This will be appended to the commit message, separated by two new lines. For example:
-
-**.github/workflows/sync.yml**
-
-```yml
-- name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
-  with:
-    GH_PAT: ${{ secrets.GH_PAT }}
-    COMMIT_BODY: "Change-type: patch"
-```
-
-The above example would result in a commit message that looks something like this:
-```
-🔄 synced local '<filename>' with remote '<filename>'
-
-Change-type: patch
-```
-
 ### Add content to the PR body
 
 You can add more content to the PR body with the `PR_BODY` option. For example:
@@ -550,19 +555,7 @@ You can add more content to the PR body with the `PR_BODY` option. For example:
     PR_BODY: This is your custom PR Body
 ```
 
-It will be added below the first line of the body and above the list of changed files. The above example would result in a PR body that looks something like this:
-
-```
-synced local file(s) with GITHUB_REPOSITORY.
-
-This is your custom PR Body
-
-▶ Changed files
-
----
-
-This PR was created automatically by the file-sync workflow run xxx.
-```
+It is added after the list of files, above the footer.
 
 ### Fork and pull request workflow
 

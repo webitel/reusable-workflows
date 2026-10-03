@@ -34223,8 +34223,6 @@ function getOctokitOptions(token, options) {
     return opts;
 }
 
-const context$1 = new Context();
-
 var light$1 = {exports: {}};
 
 /**
@@ -42270,17 +42268,8 @@ try {
       key: "IS_FINE_GRAINED",
       default: false
     }),
-    COMMIT_BODY: libExports.getInput({
-      key: "COMMIT_BODY",
-      default: ""
-    }),
     // Read directly: action-input-parser treats an empty value as unset, which makes the prefix impossible to disable.
-    COMMIT_PREFIX: process.env.INPUT_COMMIT_PREFIX !== void 0 ? process.env.INPUT_COMMIT_PREFIX.trim() : "\u{1F504}",
-    COMMIT_EACH_FILE: libExports.getInput({
-      key: "COMMIT_EACH_FILE",
-      type: "boolean",
-      default: true
-    }),
+    TITLE_PREFIX: process.env.INPUT_TITLE_PREFIX !== void 0 ? process.env.INPUT_TITLE_PREFIX.trim() : "chore(sync)",
     PR_LABELS: libExports.getInput({
       key: "PR_LABELS",
       default: ["sync"],
@@ -42352,16 +42341,6 @@ try {
     }),
     SKIP_PR: libExports.getInput({
       key: "SKIP_PR",
-      type: "boolean",
-      default: false
-    }),
-    ORIGINAL_MESSAGE: libExports.getInput({
-      key: "ORIGINAL_MESSAGE",
-      type: "boolean",
-      default: false
-    }),
-    COMMIT_AS_PR_TITLE: libExports.getInput({
-      key: "COMMIT_AS_PR_TITLE",
       type: "boolean",
       default: false
     }),
@@ -49007,31 +48986,21 @@ async function remove(src) {
   debug(`RM: ${src}`);
   return fs.remove(src);
 }
-function arrayEquals(array1, array2) {
-  return Array.isArray(array1) && Array.isArray(array2) && array1.length === array2.length && array1.every((value, i) => value === array2[i]);
-}
-function prefixed(prefix, text) {
-  return prefix ? `${prefix} ${text}` : text;
-}
 
 const {
   GITHUB_TOKEN,
-  GITHUB_SERVER_URL,
+  GITHUB_SERVER_URL: GITHUB_SERVER_URL$1,
   IS_INSTALLATION_TOKEN,
   IS_FINE_GRAINED,
   GIT_USERNAME,
   GIT_EMAIL,
   TMP_DIR: TMP_DIR$1,
-  COMMIT_BODY,
-  COMMIT_PREFIX: COMMIT_PREFIX$1,
   GITHUB_REPOSITORY: GITHUB_REPOSITORY$1,
   OVERWRITE_EXISTING_PR: OVERWRITE_EXISTING_PR$1,
   SKIP_PR: SKIP_PR$1,
-  PR_BODY,
   BRANCH_PREFIX,
   FORK: FORK$1
 } = config;
-const DEFAULT_MESSAGE = prefixed(COMMIT_PREFIX$1, `synced file(s) with ${GITHUB_REPOSITORY$1}`);
 class Git {
   constructor() {
     const Octokit = GitHub.plugin(throttling);
@@ -49064,7 +49033,7 @@ class Git {
     await this.getLastCommitSha();
     this.baseSha = this.lastCommitSha;
     if (FORK$1) {
-      const forkUrl = new URL(GITHUB_SERVER_URL);
+      const forkUrl = new URL(GITHUB_SERVER_URL$1);
       forkUrl.username = GITHUB_TOKEN;
       forkUrl.pathname = `${FORK$1}/${this.repo.name}.git`;
       await this.createFork();
@@ -49135,47 +49104,6 @@ class Git {
       this.workingDir
     );
   }
-  isOneCommitPush() {
-    return context$1.eventName === "push" && context$1.payload.commits.length === 1;
-  }
-  originalCommitMessage() {
-    return context$1.payload.commits[0].message;
-  }
-  parseGitDiffOutput(string) {
-    return `
-${string}`.split("\ndiff --git").slice(1).reduce((resultDict, fileDiff) => {
-      const lines = fileDiff.split("\n");
-      const lastHeaderLineIndex = lines.findIndex((line) => line.startsWith("+++"));
-      if (lastHeaderLineIndex === -1) return resultDict;
-      const plainDiff = lines.slice(lastHeaderLineIndex + 1).join("\n").trim();
-      let filePath = "";
-      if (lines[lastHeaderLineIndex].startsWith("+++ b/")) {
-        filePath = lines[lastHeaderLineIndex].slice(6);
-      } else {
-        filePath = lines[lastHeaderLineIndex - 1].slice(6);
-      }
-      return { ...resultDict, [filePath]: plainDiff };
-    }, {});
-  }
-  async getChangesFromLastCommit(source) {
-    if (this.lastCommitChanges === void 0) {
-      const diff = await this.github.repos.compareCommits({
-        mediaType: {
-          format: "diff"
-        },
-        owner: context$1.payload.repository.owner.name,
-        repo: context$1.payload.repository.name,
-        base: context$1.payload.before,
-        head: context$1.payload.after
-      });
-      this.lastCommitChanges = this.parseGitDiffOutput(diff.data);
-    }
-    if (source.endsWith("/")) {
-      return Object.keys(this.lastCommitChanges).filter((filePath) => filePath.startsWith(source)).reduce((result, key) => [...result, this.lastCommitChanges[key]], []);
-    } else {
-      return this.lastCommitChanges[source] === void 0 ? [] : [this.lastCommitChanges[source]];
-    }
-  }
   // SHA of the source repository checkout the action runs in
   async sourceSha() {
     return execCmd(`git rev-parse HEAD`, process.cwd());
@@ -49185,13 +49113,6 @@ ${string}`.split("\ndiff --git").slice(1).reduce((resultDict, fileDiff) => {
       `git rev-parse HEAD`,
       this.workingDir
     );
-  }
-  async changes(destination) {
-    const output = await execCmd(
-      `git diff HEAD -- ${shellQuote(destination)}`,
-      this.workingDir
-    );
-    return Object.values(this.parseGitDiffOutput(output));
   }
   // Files changed in the working tree compared to the cloned base commit, as [{ status, file }] with status A, M or D
   async changedFiles() {
@@ -49213,13 +49134,7 @@ ${string}`.split("\ndiff --git").slice(1).reduce((resultDict, fileDiff) => {
     );
     return porcelainExports.parse(statusOutput).length !== 0;
   }
-  async commit(msg) {
-    let message = msg !== void 0 ? msg : DEFAULT_MESSAGE;
-    if (COMMIT_BODY) {
-      message += `
-
-${COMMIT_BODY}`;
-    }
+  async commit(message) {
     return execCmd(
       `git commit -m ${shellQuote(message)}`,
       this.workingDir
@@ -49374,18 +49289,7 @@ ${COMMIT_BODY}`;
       body: this.existingPr.body.replace("\u26A0\uFE0F This PR is being automatically resynced \u26A0\uFE0F", "")
     });
   }
-  async createOrUpdatePr(changedFiles, title = DEFAULT_MESSAGE) {
-    const body = dedent(`
-			synced local file(s) with [${GITHUB_REPOSITORY$1}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY$1}).
-
-			${PR_BODY}
-
-			${changedFiles}
-
-			---
-
-			This PR was created automatically by the [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) workflow run [#${process.env.GITHUB_RUN_ID || 0}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY$1}/actions/runs/${process.env.GITHUB_RUN_ID || 0})
-		`);
+  async createOrUpdatePr(title, body) {
     if (this.existingPr) {
       info(`Overwriting existing PR`);
       const { data: data2 } = await this.github.pulls.update({
@@ -49520,31 +49424,215 @@ async function sourceCommits({ cwd, anchor, paths }) {
   });
   return result("ok", commits);
 }
+function jiraKeys(subjects) {
+  const keys = [];
+  for (const subject of subjects) {
+    for (const [, group] of subject.matchAll(/\[([^\]]+)\]/g)) {
+      for (const key of group.split(",").map((k) => k.trim())) {
+        if (/^[A-Z][A-Z0-9]+-\d+$/.test(key) && !keys.includes(key)) keys.push(key);
+      }
+    }
+  }
+  return keys;
+}
+
+const ACTION_URL = "https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync";
+const short = (sha) => sha.slice(0, 7);
+const description = (subject) => subject.replace(/^\w+(\([^)]*\))?(\[[^\]]*\])?!?:\s*/, "");
+const knownRange = (history) => history.status === "ok" && history.from !== void 0;
+function syncSubject({ titlePrefix, repository, history }) {
+  const keys = jiraKeys(history.commits.map((c) => c.subject));
+  const header = `${titlePrefix}${keys.length > 0 ? `[${keys.join(",")}]` : ""}`;
+  let text = `sync files from ${repository}@${short(history.to)}`;
+  if (history.commits.length === 1) text = description(history.commits[0].subject);
+  if (history.commits.length > 1) text = `${history.commits.length} changes from ${repository}`;
+  return header ? `${header}: ${text}` : text;
+}
+function commitMessage(context) {
+  const { repository, config, runUrl, history, files } = context;
+  const source = knownRange(history) ? `${repository} ${short(history.from)}..${short(history.to)}` : `${repository}@${short(history.to)}`;
+  const sections = [syncSubject(context), `Source: ${source} (${config})`];
+  if (history.commits.length > 0) {
+    sections.push(["Changes:", ...history.commits.map((c) => `- ${c.subject} (${short(c.sha)})`)].join("\n"));
+  }
+  sections.push(["Files:", ...files.map((f) => `- ${f.status} ${f.dest}${f.source ? ` <- ${f.source}` : ""}`)].join("\n"));
+  sections.push([
+    `Synced-From: ${repository}@${history.to}`,
+    `Sync-Config: ${config}`,
+    `Sync-Run: ${runUrl}`
+  ].join("\n"));
+  return sections.join("\n\n");
+}
+function pullRequestBody(context) {
+  const { serverUrl, repository, config, runUrl, history, files, extra } = context;
+  const repoUrl = `${serverUrl}/${repository}`;
+  const sections = [`Syncs files from [${repository}@${short(history.to)}](${repoUrl}/tree/${history.to}) using \`${config}\`.`];
+  if (knownRange(history) && history.commits.length > 0) {
+    sections.push([
+      `### Source changes ([${short(history.from)}..${short(history.to)}](${repoUrl}/compare/${history.from}...${history.to}))`,
+      ...history.commits.map((c) => `- [\`${short(c.sha)}\`](${repoUrl}/commit/${c.sha}) ${c.subject}`)
+    ].join("\n"));
+  }
+  sections.push([
+    "### Files",
+    "| | File | Source |",
+    "|---|---|---|",
+    ...files.map((f) => `| ${f.status} | \`${f.dest}\` | ${f.source ? `[\`${f.source}\`](${repoUrl}/blob/${history.to}/${f.source}) ` : ""}|`)
+  ].join("\n"));
+  if (extra) sections.push(extra);
+  sections.push([
+    "---",
+    `Created by [file-sync](${ACTION_URL}), run [#${runUrl.split("/").pop()}](${runUrl}).`,
+    "This branch is rebuilt on every sync \u2014 do not push to it."
+  ].join("\n"));
+  return sections.join("\n\n");
+}
 
 const {
-  COMMIT_EACH_FILE,
-  COMMIT_PREFIX,
+  CONFIG_PATH,
+  SYNC_NAME,
+  TITLE_PREFIX,
+  GITHUB_REPOSITORY,
+  GITHUB_SERVER_URL,
+  PR_BODY,
   PR_LABELS,
   ASSIGNEES,
-  DRY_RUN,
-  TMP_DIR,
-  SKIP_CLEANUP,
-  OVERWRITE_EXISTING_PR,
-  SKIP_PR,
-  ORIGINAL_MESSAGE,
-  COMMIT_AS_PR_TITLE,
-  FORK,
   REVIEWERS,
   TEAM_REVIEWERS,
+  DRY_RUN,
+  OVERWRITE_EXISTING_PR,
+  SKIP_PR,
+  FORK
+} = config;
+async function syncFiles(git, files) {
+  const managed = [];
+  await forEach(files, async (file) => {
+    if (fs$2.existsSync(file.source) === false) return warning(`Source ${file.source} not found`);
+    const localDestination = `${git.workingDir}/${file.dest}`;
+    if (fs$2.existsSync(localDestination) && file.replace === false) return warning(`File(s) already exist(s) in destination and 'replace' option is set to false`);
+    const isDirectory = await pathIsDirectory(file.source);
+    const source = isDirectory ? addTrailingSlash(file.source) : file.source;
+    const dest = isDirectory ? addTrailingSlash(localDestination) : localDestination;
+    if (isDirectory) info(`Source is directory`);
+    const written = await copy(source, dest, isDirectory, file);
+    if (file.replace !== false) managed.push(...written);
+    await git.add(file.dest);
+  });
+  return managed;
+}
+async function manifestEntries(git, managed) {
+  const entries = {};
+  for (const file of managed) {
+    entries[path.relative(git.workingDir, file.dest)] = {
+      source: path.normalize(file.source),
+      sha256: sha256(await fs$2.promises.readFile(file.dest))
+    };
+  }
+  return entries;
+}
+async function decoratePullRequest(git) {
+  if (FORK) return;
+  if (PR_LABELS !== void 0 && PR_LABELS.length > 0) {
+    info(`Adding label(s) "${PR_LABELS.join(", ")}" to PR`);
+    await git.addPrLabels(PR_LABELS);
+  }
+  if (ASSIGNEES !== void 0 && ASSIGNEES.length > 0) {
+    info(`Adding assignee(s) "${ASSIGNEES.join(", ")}" to PR`);
+    await git.addPrAssignees(ASSIGNEES);
+  }
+  if (REVIEWERS !== void 0 && REVIEWERS.length > 0) {
+    info(`Adding reviewer(s) "${REVIEWERS.join(", ")}" to PR`);
+    await git.addPrReviewers(REVIEWERS);
+  }
+  if (TEAM_REVIEWERS !== void 0 && TEAM_REVIEWERS.length > 0) {
+    info(`Adding team reviewer(s) "${TEAM_REVIEWERS.join(", ")}" to PR`);
+    await git.addPrTeamReviewers(TEAM_REVIEWERS);
+  }
+}
+async function syncRepository(git, item) {
+  await git.initRepo(item.repo);
+  let existingPr;
+  if (SKIP_PR === false) {
+    await git.createPrBranch();
+    existingPr = OVERWRITE_EXISTING_PR ? await git.findExistingPr() : void 0;
+    if (existingPr && DRY_RUN === false) {
+      info(`Found existing PR ${existingPr.number}`);
+      await git.setPrWarning();
+    }
+  }
+  const manifestFile = manifestPath(SYNC_NAME);
+  const previousManifest = await readManifest(path.join(git.workingDir, manifestFile));
+  info(`Locally syncing file(s) between source and target repository`);
+  const managed = await syncFiles(git, item.files);
+  const manifestFiles = await manifestEntries(git, managed);
+  for (const conflict of await findOwnershipConflicts(git.workingDir, SYNC_NAME, Object.keys(manifestFiles))) {
+    warning(`${conflict.dest} is also managed by the "${conflict.stream}" sync stream`);
+  }
+  const fileChanges = (await git.changedFiles()).filter(({ file }) => file !== manifestFile);
+  if (fileChanges.length === 0 && previousManifest !== void 0 && sameFiles(previousManifest.files, manifestFiles)) {
+    info("File(s) already up to date");
+    if (existingPr) await git.removePrWarning();
+    return { status: "up-to-date" };
+  }
+  await fs$2.promises.mkdir(path.dirname(path.join(git.workingDir, manifestFile)), { recursive: true });
+  await fs$2.promises.writeFile(path.join(git.workingDir, manifestFile), serializeManifest({
+    name: SYNC_NAME,
+    repository: GITHUB_REPOSITORY,
+    config: path.normalize(CONFIG_PATH),
+    sha: await git.sourceSha(),
+    files: manifestFiles
+  }));
+  await git.add(manifestFile);
+  const changes = fileChanges.length > 0 ? fileChanges : await git.changedFiles();
+  const sourceOf = (file) => manifestFiles[file]?.source || previousManifest?.files[file]?.source;
+  const files = changes.map(({ status, file }) => ({ status, dest: file, source: sourceOf(file) }));
+  const sources = [...new Set(files.map((f) => f.source).filter(Boolean))];
+  const history = await sourceCommits({
+    cwd: process.cwd(),
+    anchor: previousManifest?.source.sha,
+    paths: sources.length > 0 ? [path.normalize(CONFIG_PATH), ...sources] : []
+  });
+  if (history.status === "shallow") {
+    warning("The source checkout is shallow; check it out with fetch-depth: 0 to list source commits");
+  }
+  const context = {
+    titlePrefix: TITLE_PREFIX,
+    serverUrl: GITHUB_SERVER_URL,
+    repository: GITHUB_REPOSITORY,
+    config: path.normalize(CONFIG_PATH),
+    runUrl: `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID || 0}`,
+    history,
+    files,
+    extra: PR_BODY
+  };
+  const message = commitMessage(context);
+  if (DRY_RUN) {
+    warning("Dry run, no changes will be pushed");
+    info(`Commit message:
+${message}`);
+    if (SKIP_PR === false) info(`Pull request body:
+${pullRequestBody(context)}`);
+    return { status: "dry-run" };
+  }
+  await git.commit(message);
+  info(`Pushing changes to target repository`);
+  await git.push();
+  if (SKIP_PR) return { status: "pushed" };
+  const pullRequest = await git.createOrUpdatePr(syncSubject(context), pullRequestBody(context));
+  notice(`Pull Request #${pullRequest.number} created/updated: ${pullRequest.html_url}`);
+  await decoratePullRequest(git);
+  return { status: "pull-request", pullRequest };
+}
+
+const {
+  TMP_DIR,
+  SKIP_CLEANUP,
   NUNJUCKS_BLOCK_START,
   NUNJUCKS_BLOCK_END,
   NUNJUCKS_VARIABLE_START,
   NUNJUCKS_VARIABLE_END,
   NUNJUCKS_COMMENT_START,
-  NUNJUCKS_COMMENT_END,
-  CONFIG_PATH,
-  SYNC_NAME,
-  GITHUB_REPOSITORY
+  NUNJUCKS_COMMENT_END
 } = config;
 async function run() {
   if (NUNJUCKS_BLOCK_START || NUNJUCKS_BLOCK_END || NUNJUCKS_VARIABLE_START || NUNJUCKS_VARIABLE_END || NUNJUCKS_COMMENT_START || NUNJUCKS_COMMENT_END) {
@@ -49569,155 +49657,8 @@ async function run() {
     info(`Branch		: ${item.repo.branch}`);
     info("	");
     try {
-      await git.initRepo(item.repo);
-      let existingPr;
-      if (SKIP_PR === false) {
-        await git.createPrBranch();
-        existingPr = OVERWRITE_EXISTING_PR ? await git.findExistingPr() : void 0;
-        if (existingPr && DRY_RUN === false) {
-          info(`Found existing PR ${existingPr.number}`);
-          await git.setPrWarning();
-        }
-      }
-      const manifestFile = manifestPath(SYNC_NAME);
-      const previousManifest = await readManifest(path.join(git.workingDir, manifestFile));
-      info(`Locally syncing file(s) between source and target repository`);
-      const modified = [];
-      const managed = [];
-      await forEach(item.files, async (file) => {
-        const fileExists = fs$2.existsSync(file.source);
-        if (fileExists === false) return warning(`Source ${file.source} not found`);
-        const localDestination = `${git.workingDir}/${file.dest}`;
-        const destExists = fs$2.existsSync(localDestination);
-        if (destExists === true && file.replace === false) return warning(`File(s) already exist(s) in destination and 'replace' option is set to false`);
-        const isDirectory = await pathIsDirectory(file.source);
-        const source = isDirectory ? `${addTrailingSlash(file.source)}` : file.source;
-        const dest = isDirectory ? `${addTrailingSlash(localDestination)}` : localDestination;
-        if (isDirectory) info(`Source is directory`);
-        const written = await copy(source, dest, isDirectory, file);
-        if (file.replace !== false) managed.push(...written);
-        await git.add(file.dest);
-        if (COMMIT_EACH_FILE === true) {
-          const hasChanges2 = await git.hasChanges();
-          if (hasChanges2 === false) return debug("File(s) already up to date");
-          debug(`Creating commit for file(s) ${file.dest}`);
-          const directory = isDirectory ? "directory" : "";
-          const otherFiles = isDirectory ? "and copied all sub files/folders" : "";
-          const useOriginalCommitMessage = ORIGINAL_MESSAGE && git.isOneCommitPush() && arrayEquals(await git.getChangesFromLastCommit(file.source), await git.changes(file.dest));
-          const message = {
-            true: {
-              commit: useOriginalCommitMessage ? git.originalCommitMessage() : prefixed(COMMIT_PREFIX, `synced local '${file.dest}' with remote '${file.source}'`),
-              pr: `synced local ${directory} <code>${file.dest}</code> with remote ${directory} <code>${file.source}</code>`
-            },
-            false: {
-              commit: useOriginalCommitMessage ? git.originalCommitMessage() : prefixed(COMMIT_PREFIX, `created local '${file.dest}' from remote '${file.source}'`),
-              pr: `created local ${directory} <code>${file.dest}</code> ${otherFiles} from remote ${directory} <code>${file.source}</code>`
-            }
-          };
-          await git.commit(message[destExists].commit);
-          modified.push({
-            dest: file.dest,
-            source: file.source,
-            message: message[destExists].pr,
-            useOriginalMessage: useOriginalCommitMessage,
-            commitMessage: message[destExists].commit
-          });
-        }
-      });
-      const manifestFiles = {};
-      for (const file of managed) {
-        manifestFiles[path.relative(git.workingDir, file.dest)] = {
-          source: path.normalize(file.source),
-          sha256: sha256(await fs$2.promises.readFile(file.dest))
-        };
-      }
-      for (const conflict of await findOwnershipConflicts(git.workingDir, SYNC_NAME, Object.keys(manifestFiles))) {
-        warning(`${conflict.dest} is also managed by the "${conflict.stream}" sync stream`);
-      }
-      const filesChanged = modified.length > 0 || await git.hasChanges();
-      if (filesChanged || previousManifest === void 0 || !sameFiles(previousManifest.files, manifestFiles)) {
-        await fs$2.promises.mkdir(path.dirname(path.join(git.workingDir, manifestFile)), { recursive: true });
-        await fs$2.promises.writeFile(path.join(git.workingDir, manifestFile), serializeManifest({
-          name: SYNC_NAME,
-          repository: GITHUB_REPOSITORY,
-          config: path.normalize(CONFIG_PATH),
-          sha: await git.sourceSha(),
-          files: manifestFiles
-        }));
-        await git.add(manifestFile);
-      }
-      const sources = (await git.changedFiles()).map(({ file }) => manifestFiles[file]?.source || previousManifest?.files[file]?.source).filter(Boolean);
-      const history = await sourceCommits({
-        cwd: process.cwd(),
-        anchor: previousManifest?.source.sha,
-        paths: sources.length > 0 ? [path.normalize(CONFIG_PATH), ...new Set(sources)] : []
-      });
-      if (history.status === "shallow") {
-        warning("The source checkout is shallow; check it out with fetch-depth: 0 to list source commits");
-      } else if (history.status === "ok" && history.commits.length > 0) {
-        info(`Source commits ${history.from.slice(0, 7)}..${history.to.slice(0, 7)}:
-${history.commits.map((c) => `- ${c.sha.slice(0, 7)} ${c.subject}`).join("\n")}`);
-      }
-      if (DRY_RUN) {
-        warning("Dry run, no changes will be pushed");
-        debug("Git Status:");
-        debug(await git.status());
-        return;
-      }
-      const hasChanges = await git.hasChanges();
-      if (hasChanges === false && modified.length < 1) {
-        info("File(s) already up to date");
-        if (existingPr) await git.removePrWarning();
-        return;
-      }
-      if (hasChanges === true) {
-        debug(`Creating commit for remaining files`);
-        let useOriginalCommitMessage = ORIGINAL_MESSAGE && git.isOneCommitPush();
-        if (useOriginalCommitMessage) {
-          await forEach(item.files, async (file) => {
-            useOriginalCommitMessage = useOriginalCommitMessage && arrayEquals(await git.getChangesFromLastCommit(file.source), await git.changes(file.dest));
-          });
-        }
-        const commitMessage = useOriginalCommitMessage ? git.originalCommitMessage() : void 0;
-        await git.commit(commitMessage);
-        modified.push({
-          dest: git.workingDir,
-          useOriginalMessage: useOriginalCommitMessage,
-          commitMessage
-        });
-      }
-      info(`Pushing changes to target repository`);
-      await git.push();
-      if (SKIP_PR === false) {
-        const changedFiles = dedent(`
-					<details>
-					<summary>Changed files</summary>
-					<ul>
-					${modified.map((file) => `<li>${file.message}</li>`).join("")}
-					</ul>
-					</details>
-				`);
-        const useCommitAsPRTitle = COMMIT_AS_PR_TITLE && modified.length === 1 && modified[0].useOriginalMessage;
-        const pullRequest = await git.createOrUpdatePr(COMMIT_EACH_FILE ? changedFiles : "", useCommitAsPRTitle ? modified[0].commitMessage.split("\n", 1)[0].trim() : void 0);
-        notice(`Pull Request #${pullRequest.number} created/updated: ${pullRequest.html_url}`);
-        prUrls.push(pullRequest.html_url);
-        if (PR_LABELS !== void 0 && PR_LABELS.length > 0 && !FORK) {
-          info(`Adding label(s) "${PR_LABELS.join(", ")}" to PR`);
-          await git.addPrLabels(PR_LABELS);
-        }
-        if (ASSIGNEES !== void 0 && ASSIGNEES.length > 0 && !FORK) {
-          info(`Adding assignee(s) "${ASSIGNEES.join(", ")}" to PR`);
-          await git.addPrAssignees(ASSIGNEES);
-        }
-        if (REVIEWERS !== void 0 && REVIEWERS.length > 0 && !FORK) {
-          info(`Adding reviewer(s) "${REVIEWERS.join(", ")}" to PR`);
-          await git.addPrReviewers(REVIEWERS);
-        }
-        if (TEAM_REVIEWERS !== void 0 && TEAM_REVIEWERS.length > 0 && !FORK) {
-          info(`Adding team reviewer(s) "${TEAM_REVIEWERS.join(", ")}" to PR`);
-          await git.addPrTeamReviewers(TEAM_REVIEWERS);
-        }
-      }
+      const result = await syncRepository(git, item);
+      if (result.pullRequest) prUrls.push(result.pullRequest.html_url);
       info("	");
     } catch (err) {
       setFailed(err.message);

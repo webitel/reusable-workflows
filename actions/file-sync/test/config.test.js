@@ -17,14 +17,14 @@ function loadConfig(env) {
     return JSON.parse(out.trim().split('\n').pop())
 }
 
-test('COMMIT_PREFIX defaults to 🔄 when the input is not set', () => {
-    assert.equal(loadConfig({}).COMMIT_PREFIX, '🔄')
+test('TITLE_PREFIX defaults to chore(sync) when the input is not set', () => {
+    assert.equal(loadConfig({}).TITLE_PREFIX, 'chore(sync)')
 })
 
-test('COMMIT_PREFIX can be disabled with an empty input', () => {
-    assert.equal(loadConfig({ INPUT_COMMIT_PREFIX: '' }).COMMIT_PREFIX, '')
+test('TITLE_PREFIX can be disabled with an empty input', () => {
+    assert.equal(loadConfig({ INPUT_TITLE_PREFIX: '' }).TITLE_PREFIX, '')
 })
 
-test('COMMIT_PREFIX uses a custom input', () => {
-    assert.equal(loadConfig({ INPUT_COMMIT_PREFIX: 'sync:' }).COMMIT_PREFIX, 'sync:')
+test('TITLE_PREFIX uses a custom input', () => {
+    assert.equal(loadConfig({ INPUT_TITLE_PREFIX: 'ci(sync)' }).TITLE_PREFIX, 'ci(sync)')
 })

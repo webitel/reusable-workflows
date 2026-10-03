@@ -112,7 +112,6 @@ export async function createSandbox() {
                 INPUT_GH_PAT: 'token',
                 INPUT_GIT_EMAIL: 'bot@example.com',
                 INPUT_GIT_USERNAME: 'sync-bot',
-                INPUT_COMMIT_PREFIX: '🔄',
                 ...inputEnv,
                 ...env
             }

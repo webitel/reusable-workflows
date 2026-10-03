@@ -57,21 +57,11 @@ inputs:
     description: |
       Teams to request a review of the pull request from. Defaults to none
 
-  COMMIT_PREFIX:
+  TITLE_PREFIX:
     required: false
-    default: 🔄
+    default: chore(sync)
     description: |
-      Prefix for commit message and pull request title. Set to an empty string to disable. Defaults to 🔄
-
-  COMMIT_BODY:
-    required: false
-    description: |
-      Commit message body. Will be appended to commit message, separated by two line returns. Defaults to ''
-
-  COMMIT_EACH_FILE:
-    required: false
-    description: |
-      Commit each file seperately. Defaults to true
+      Prefix of the sync commit subject and pull request title, followed by the Jira keys of the source commits. Set to an empty string to disable. Defaults to chore(sync)
 
   GIT_EMAIL:
     required: false
@@ -102,16 +92,6 @@ inputs:
     required: false
     description: |
       Overwrite any existing Sync PR with the new changes. Defaults to true
-
-  ORIGINAL_MESSAGE:
-    required: false
-    description: |
-      Re-use the original commit message for commits. Works only if the action is triggered by pushing one commit. Defaults to false
-
-  COMMIT_AS_PR_TITLE:
-    required: false
-    description: |
-      Re-use the commit message as PR title. Works only if ORIGINAL_MESSAGE is on and PR has one commit. Defaults to false
 
   SKIP_PR:
     required: false

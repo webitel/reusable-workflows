@@ -183,11 +183,3 @@ export async function remove(src) {
 
     return fs.remove(src)
 }
-
-export function arrayEquals(array1, array2) {
-    return Array.isArray(array1) && Array.isArray(array2) && array1.length === array2.length && array1.every((value, i) => value === array2[i])
-}
-// Prepends prefix to text, separated by a space; an empty prefix leaves text unchanged.
-export function prefixed(prefix, text) {
-    return prefix ? `${ prefix } ${ text }` : text
-}
