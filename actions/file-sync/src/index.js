@@ -7,6 +7,7 @@ import { forEach, dedent, addTrailingSlash, pathIsDirectory, copy, remove, array
 
 import { parseConfig, default as config } from './config.js'
 import { manifestPath, readManifest, serializeManifest, sameFiles, sha256, findOwnershipConflicts } from './manifest.js'
+import { sourceCommits } from './history.js'
 
 const {
     COMMIT_EACH_FILE,
@@ -168,6 +169,21 @@ async function run() {
                     files: manifestFiles
                 }))
                 await git.add(manifestFile)
+            }
+
+            // Source commits since the last sync that touched the config or the sources of changed files
+            const sources = (await git.changedFiles())
+                .map(({ file }) => manifestFiles[file]?.source || previousManifest?.files[file]?.source)
+                .filter(Boolean)
+            const history = await sourceCommits({
+                cwd: process.cwd(),
+                anchor: previousManifest?.source.sha,
+                paths: sources.length > 0 ? [ path.normalize(CONFIG_PATH), ...new Set(sources) ] : []
+            })
+            if (history.status === 'shallow') {
+                core.warning('The source checkout is shallow; check it out with fetch-depth: 0 to list source commits')
+            } else if (history.status === 'ok' && history.commits.length > 0) {
+                core.info(`Source commits ${ history.from.slice(0, 7) }..${ history.to.slice(0, 7) }:\n${ history.commits.map((c) => `- ${ c.sha.slice(0, 7) } ${ c.subject }`).join('\n') }`)
             }
 
             if (DRY_RUN) {

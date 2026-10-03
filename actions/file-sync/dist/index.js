@@ -12,7 +12,7 @@ import 'net';
 import require$$1 from 'tls';
 import events$1 from 'events';
 import require$$5$4 from 'assert';
-import require$$6 from 'util';
+import require$$6, { promisify } from 'util';
 import require$$0$1 from 'node:assert';
 import require$$0$3 from 'node:net';
 import require$$2 from 'node:http';
@@ -32,7 +32,7 @@ import require$$5$2 from 'node:async_hooks';
 import require$$1$4 from 'node:console';
 import require$$1$5 from 'node:dns';
 import require$$5$3 from 'string_decoder';
-import child, { exec } from 'child_process';
+import child, { exec, execFile } from 'child_process';
 import 'timers';
 import require$$0$6 from 'constants';
 import require$$0$7 from 'stream';
@@ -49062,6 +49062,7 @@ class Git {
     await this.setIdentity();
     await this.getBaseBranch();
     await this.getLastCommitSha();
+    this.baseSha = this.lastCommitSha;
     if (FORK$1) {
       const forkUrl = new URL(GITHUB_SERVER_URL);
       forkUrl.username = GITHUB_TOKEN;
@@ -49191,6 +49192,19 @@ ${string}`.split("\ndiff --git").slice(1).reduce((resultDict, fileDiff) => {
       this.workingDir
     );
     return Object.values(this.parseGitDiffOutput(output));
+  }
+  // Files changed in the working tree compared to the cloned base commit, as [{ status, file }] with status A, M or D
+  async changedFiles() {
+    await execCmd(`git add -A`, this.workingDir);
+    const output = await execCmd(
+      `git diff --cached --name-status --no-renames ${this.baseSha}`,
+      this.workingDir
+    );
+    if (output === "") return [];
+    return output.split("\n").map((line) => {
+      const [status, file] = line.split("	");
+      return { status, file };
+    });
   }
   async hasChanges() {
     const statusOutput = await execCmd(
@@ -49476,6 +49490,37 @@ ${COMMIT_BODY}`;
   }
 }
 
+const execFileAsync = promisify(execFile);
+async function git(cwd, ...args) {
+  const { stdout } = await execFileAsync("git", args, { cwd, maxBuffer: 1024 * 1024 * 4 });
+  return stdout.trim();
+}
+async function succeeds(cwd, ...args) {
+  try {
+    await git(cwd, ...args);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function sourceCommits({ cwd, anchor, paths }) {
+  const to = await git(cwd, "rev-parse", "HEAD");
+  const result = (status, commits2 = []) => ({ status, from: anchor, to, commits: commits2 });
+  if (!anchor) return result("no-anchor");
+  if (!await succeeds(cwd, "cat-file", "-e", `${anchor}^{commit}`)) {
+    const shallow = await git(cwd, "rev-parse", "--is-shallow-repository") === "true";
+    return result(shallow ? "shallow" : "unknown-anchor");
+  }
+  if (!await succeeds(cwd, "merge-base", "--is-ancestor", anchor, to)) return result("unknown-anchor");
+  if (paths.length === 0) return result("ok");
+  const output = await git(cwd, "log", "--no-merges", "--reverse", "--format=%H%x1f%s", `${anchor}..${to}`, "--", ...paths);
+  const commits = output === "" ? [] : output.split("\n").map((line) => {
+    const [sha, subject] = line.split("");
+    return { sha, subject };
+  });
+  return result("ok", commits);
+}
+
 const {
   COMMIT_EACH_FILE,
   COMMIT_PREFIX,
@@ -49600,6 +49645,18 @@ async function run() {
           files: manifestFiles
         }));
         await git.add(manifestFile);
+      }
+      const sources = (await git.changedFiles()).map(({ file }) => manifestFiles[file]?.source || previousManifest?.files[file]?.source).filter(Boolean);
+      const history = await sourceCommits({
+        cwd: process.cwd(),
+        anchor: previousManifest?.source.sha,
+        paths: sources.length > 0 ? [path.normalize(CONFIG_PATH), ...new Set(sources)] : []
+      });
+      if (history.status === "shallow") {
+        warning("The source checkout is shallow; check it out with fetch-depth: 0 to list source commits");
+      } else if (history.status === "ok" && history.commits.length > 0) {
+        info(`Source commits ${history.from.slice(0, 7)}..${history.to.slice(0, 7)}:
+${history.commits.map((c) => `- ${c.sha.slice(0, 7)} ${c.subject}`).join("\n")}`);
       }
       if (DRY_RUN) {
         warning("Dry run, no changes will be pushed");

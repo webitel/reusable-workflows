@@ -43,8 +43,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@main
-      
+        uses: actions/checkout@v6
+        with:
+          # Full history lets the action list the source commits each sync brings
+          fetch-depth: 0
+
       - name: Run GitHub File Sync
         uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
         with:
@@ -374,6 +377,7 @@ files:
 
 - Directories are listed file by file; files with `replace: false` are not listed, because the target repository owns them once they exist.
 - The manifest only changes together with the synced files, so source commits that do not affect a repository do not open sync pull requests there.
+- `source.sha` marks the last synced source commit. The next sync lists the source commits since then that touched the sync config or the sources of changed files; this needs the source repository checked out with `fetch-depth: 0` (a warning is logged otherwise).
 - Each sync config should use its own `SYNC_NAME` (the default derived from `CONFIG_PATH` already differs per config). A warning is logged when a file is listed in the manifest of another stream.
 
 ### Syncing branches

@@ -68,6 +68,7 @@ export default class Git {
         await this.setIdentity()
         await this.getBaseBranch()
         await this.getLastCommitSha()
+        this.baseSha = this.lastCommitSha
 
         if (FORK) {
             const forkUrl = new URL(GITHUB_SERVER_URL)
@@ -223,6 +224,21 @@ export default class Git {
             this.workingDir
         )
         return Object.values(this.parseGitDiffOutput(output))
+    }
+
+    // Files changed in the working tree compared to the cloned base commit, as [{ status, file }] with status A, M or D
+    async changedFiles() {
+        await execCmd(`git add -A`, this.workingDir)
+        const output = await execCmd(
+            `git diff --cached --name-status --no-renames ${ this.baseSha }`,
+            this.workingDir
+        )
+        if (output === '') return []
+
+        return output.split('\n').map((line) => {
+            const [ status, file ] = line.split('\t')
+            return { status, file }
+        })
     }
 
     async hasChanges() {

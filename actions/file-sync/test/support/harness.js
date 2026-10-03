@@ -46,6 +46,13 @@ export async function createSandbox() {
             return git(source, 'rev-parse', 'HEAD')
         },
 
+        // Replaces the source repository with a depth-1 clone of itself.
+        async makeSourceShallow() {
+            const full = path.join(root, 'source-full')
+            await fs.move(source, full)
+            git(root, 'clone', '-q', '--depth', '1', `file://${ full }`, source)
+        },
+
         // Creates a bare target repository owner/name with one commit on main.
         async createTarget(fullName, files = { 'README.md': 'target\n' }) {
             const bare = path.join(remotes, `${ fullName }.git`)
