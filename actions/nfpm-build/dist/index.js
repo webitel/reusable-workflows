@@ -33507,250 +33507,231 @@ const {
 } = yaml;
 
 class ConfigGenerator {
-    static async generateNFPMConfig(configFile, contentFiles) {
-        startGroup('Generating nFPM configuration...');
-        const config = {
-            name: getInput('package-name'),
-            description: getInput('package-description'),
-            vendor: getInput('vendor') || '',
-            maintainer: getInput('maintainer'),
-            homepage: getInput('homepage') || '',
-            license: getInput('license') || '',
-            arch: getInput('arch') || 'amd64',
-            platform: getInput('platform') || 'linux',
-            section: getInput('section') || 'default',
-            priority: getInput('priority') || 'optional',
-            version: getInput('version'),
-            release: getInput('release') || '1',
-            prerelease: getInput('prerelease') || '',
-            version_metadata: getInput('version-metadata') || '',
-            umask: parseInt(getInput('umask'), 8) || 0o002
-        };
-        const depends = getInput('depends') || '';
-        const recommends = getInput('recommends') || '';
-        const suggests = getInput('suggests') || '';
-        const conflicts = getInput('conflicts') || '';
-        const replaces = getInput('replaces') || '';
-        const provides = getInput('provides') || '';
-        const scripts = getInput('scripts') || '';
-        // Add dependency arrays if provided
-        this.addDependencyArray(config, 'depends', depends);
-        this.addDependencyArray(config, 'recommends', recommends);
-        this.addDependencyArray(config, 'suggests', suggests);
-        this.addDependencyArray(config, 'conflicts', conflicts);
-        this.addDependencyArray(config, 'replaces', replaces);
-        this.addDependencyArray(config, 'provides', provides);
-        if (contentFiles.length > 0) {
-            config.contents = contentFiles;
-        }
-        if (scripts.trim()) {
-            config.scripts = this.parseScripts(scripts);
-        }
-        // Use the string replacement method for reliable unquoted octal values
-        const yamlContent = objectToYamlWithOctalStringReplace(config, ['umask', 'mode'], // Fields to convert to octal
-        { includePrefix: true } // Include '0o' prefix
-        );
-        await promises.writeFile(configFile, yamlContent);
-        info('==============================');
-        info(yamlContent);
-        info('==============================');
-        endGroup();
+  static async generateNFPMConfig(configFile, contentFiles) {
+    startGroup("Generating nFPM configuration...");
+    const config = {
+      name: getInput("package-name"),
+      description: getInput("package-description"),
+      vendor: getInput("vendor") || "",
+      maintainer: getInput("maintainer"),
+      homepage: getInput("homepage") || "",
+      license: getInput("license") || "",
+      arch: getInput("arch") || "amd64",
+      platform: getInput("platform") || "linux",
+      section: getInput("section") || "default",
+      priority: getInput("priority") || "optional",
+      version: getInput("version"),
+      release: getInput("release") || "1",
+      prerelease: getInput("prerelease") || "",
+      version_metadata: getInput("version-metadata") || "",
+      umask: parseInt(getInput("umask"), 8) || 2
+    };
+    const depends = getInput("depends") || "";
+    const recommends = getInput("recommends") || "";
+    const suggests = getInput("suggests") || "";
+    const conflicts = getInput("conflicts") || "";
+    const replaces = getInput("replaces") || "";
+    const provides = getInput("provides") || "";
+    const scripts = getInput("scripts") || "";
+    this.addDependencyArray(config, "depends", depends);
+    this.addDependencyArray(config, "recommends", recommends);
+    this.addDependencyArray(config, "suggests", suggests);
+    this.addDependencyArray(config, "conflicts", conflicts);
+    this.addDependencyArray(config, "replaces", replaces);
+    this.addDependencyArray(config, "provides", provides);
+    if (contentFiles.length > 0) {
+      config.contents = contentFiles;
     }
-    static addDependencyArray(config, key, input) {
-        if (input.trim()) {
-            const deps = input
-                .split(',')
-                .map(dep => dep.trim())
-                .filter(dep => dep);
-            if (deps.length > 0) {
-                config[key] = deps;
-            }
-        }
+    if (scripts.trim()) {
+      config.scripts = this.parseScripts(scripts);
     }
-    static parseScripts(scriptsInput) {
-        try {
-            const scripts = load(scriptsInput);
-            if (typeof scripts !== 'object' || scripts === null) {
-                throw new Error('Scripts must be a YAML object');
-            }
-            // Validate script keys
-            const validKeys = ['preinstall', 'postinstall', 'preremove', 'postremove'];
-            for (const key of Object.keys(scripts)) {
-                if (!validKeys.includes(key)) {
-                    warning(`Unknown script key: ${key}. Valid keys are: ${validKeys.join(', ')}`);
-                }
-            }
-            return scripts;
-        }
-        catch (error) {
-            throw new Error(`Failed to parse scripts: ${error.message}`, { cause: error });
-        }
+    const yamlContent = objectToYamlWithOctalStringReplace(
+      config,
+      ["umask", "mode"],
+      // Fields to convert to octal
+      { includePrefix: true }
+      // Include '0o' prefix
+    );
+    await promises.writeFile(configFile, yamlContent);
+    info("==============================");
+    info(yamlContent);
+    info("==============================");
+    endGroup();
+  }
+  static addDependencyArray(config, key, input) {
+    if (input.trim()) {
+      const deps = input.split(",").map((dep) => dep.trim()).filter((dep) => dep);
+      if (deps.length > 0) {
+        config[key] = deps;
+      }
     }
+  }
+  static parseScripts(scriptsInput) {
+    try {
+      const scripts = load(scriptsInput);
+      if (typeof scripts !== "object" || scripts === null) {
+        throw new Error("Scripts must be a YAML object");
+      }
+      const validKeys = ["preinstall", "postinstall", "preremove", "postremove"];
+      for (const key of Object.keys(scripts)) {
+        if (!validKeys.includes(key)) {
+          warning(`Unknown script key: ${key}. Valid keys are: ${validKeys.join(", ")}`);
+        }
+      }
+      return scripts;
+    } catch (error) {
+      throw new Error(`Failed to parse scripts: ${error.message}`, { cause: error });
+    }
+  }
 }
 class ContentFileParser {
-    static parse(contentsInput) {
-        const input = contentsInput.trim();
-        if (!input) {
-            return [];
-        }
-        const contentFiles = [];
-        const lines = input.split('\n').map(line => line.trim()).filter(line => line);
-        for (const line of lines) {
-            const file = this.parseKeyValueLine(line);
-            contentFiles.push(file);
-        }
-        info(`Parsed ${contentFiles.length} content files from key-value format`);
-        this.logContentFiles(contentFiles);
-        return contentFiles;
+  static parse(contentsInput) {
+    const input = contentsInput.trim();
+    if (!input) {
+      return [];
     }
-    static parseKeyValueLine(line) {
-        const file = {
-            src: '',
-            dst: ''
-        };
-        // Split by spaces but preserve quoted values
-        const parts = line.match(/(\w+)=("([^"]*)"|'([^']*)'|[^\s]+)/g);
-        if (!parts) {
-            throw new Error(`Invalid key-value format: "${line}"`);
-        }
-        for (const part of parts) {
-            const [key, value] = part.split('=', 2);
-            const cleanValue = value.replace(/^["']|["']$/g, '');
-            switch (key.toLowerCase()) {
-                case 'src':
-                    file.src = cleanValue;
-                    break;
-                case 'dst':
-                    file.dst = cleanValue;
-                    break;
-                case 'mode':
-                    if (!file.file_info)
-                        file.file_info = {};
-                    file.file_info.mode = parseInt(cleanValue, 8); // converts '0644' to 420
-                    break;
-                case 'owner':
-                    if (!file.file_info)
-                        file.file_info = {};
-                    file.file_info.owner = cleanValue;
-                    break;
-                case 'group':
-                    if (!file.file_info)
-                        file.file_info = {};
-                    file.file_info.group = cleanValue;
-                    break;
-                case 'type':
-                    if (!['file', 'dir', 'config', 'symlink', 'tree'].includes(cleanValue)) {
-                        throw new Error(`Invalid type "${cleanValue}". Must be one of: file, dir, config, symlink, tree`);
-                    }
-                    file.type = cleanValue;
-                    break;
-                default:
-                    warning(`Unknown key "${key}" in content file definition`);
-            }
-        }
-        if (!file.src || !file.dst) {
-            throw new Error(`Content file must have both 'src' and 'dst' properties: "${line}"`);
-        }
-        return file;
+    const contentFiles = [];
+    const lines = input.split("\n").map((line) => line.trim()).filter((line) => line);
+    for (const line of lines) {
+      const file = this.parseKeyValueLine(line);
+      contentFiles.push(file);
     }
-    static logContentFiles(contentFiles) {
-        contentFiles.forEach(file => {
-            const mode = file.file_info?.mode ? `, ${file.file_info.mode}` : '';
-            const owner = file.file_info?.owner && file.file_info?.group ? `, ${file.file_info.owner}:${file.file_info.group}` : '';
-            const type = file.type || 'file';
-            info(`  ${file.src} -> ${file.dst} (${type}${mode}${owner})`);
-        });
+    info(`Parsed ${contentFiles.length} content files from key-value format`);
+    this.logContentFiles(contentFiles);
+    return contentFiles;
+  }
+  static parseKeyValueLine(line) {
+    const file = {
+      src: "",
+      dst: ""
+    };
+    const parts = line.match(/(\w+)=("([^"]*)"|'([^']*)'|[^\s]+)/g);
+    if (!parts) {
+      throw new Error(`Invalid key-value format: "${line}"`);
     }
+    for (const part of parts) {
+      const [key, value] = part.split("=", 2);
+      const cleanValue = value.replace(/^["']|["']$/g, "");
+      switch (key.toLowerCase()) {
+        case "src":
+          file.src = cleanValue;
+          break;
+        case "dst":
+          file.dst = cleanValue;
+          break;
+        case "mode":
+          if (!file.file_info) file.file_info = {};
+          file.file_info.mode = parseInt(cleanValue, 8);
+          break;
+        case "owner":
+          if (!file.file_info) file.file_info = {};
+          file.file_info.owner = cleanValue;
+          break;
+        case "group":
+          if (!file.file_info) file.file_info = {};
+          file.file_info.group = cleanValue;
+          break;
+        case "type":
+          if (!["file", "dir", "config", "symlink", "tree"].includes(cleanValue)) {
+            throw new Error(`Invalid type "${cleanValue}". Must be one of: file, dir, config, symlink, tree`);
+          }
+          file.type = cleanValue;
+          break;
+        default:
+          warning(`Unknown key "${key}" in content file definition`);
+      }
+    }
+    if (!file.src || !file.dst) {
+      throw new Error(`Content file must have both 'src' and 'dst' properties: "${line}"`);
+    }
+    return file;
+  }
+  static logContentFiles(contentFiles) {
+    contentFiles.forEach((file) => {
+      const mode = file.file_info?.mode ? `, ${file.file_info.mode}` : "";
+      const owner = file.file_info?.owner && file.file_info?.group ? `, ${file.file_info.owner}:${file.file_info.group}` : "";
+      const type = file.type || "file";
+      info(`  ${file.src} -> ${file.dst} (${type}${mode}${owner})`);
+    });
+  }
 }
 class FileValidator {
-    static async validateSourceFiles(contentFiles) {
-        info('Validating source files...');
-        for (const file of contentFiles) {
-            try {
-                await promises.access(file.src);
-                info(`✅ Found: ${file.src}`);
-            }
-            catch (error) {
-                throw new Error(`Source file not found: ${file.src}`, { cause: error });
-            }
-        }
+  static async validateSourceFiles(contentFiles) {
+    info("Validating source files...");
+    for (const file of contentFiles) {
+      try {
+        await promises.access(file.src);
+        info(`\u2705 Found: ${file.src}`);
+      } catch (error) {
+        throw new Error(`Source file not found: ${file.src}`, { cause: error });
+      }
     }
+  }
 }
 function objectToYamlWithOctalStringReplace(obj, fieldNames, options) {
-    const { includePrefix = true } = options || {};
-    // Create a map of original values to octal strings
-    const octalMap = new Map();
-    const placeholderMap = new Map();
-    function collectOctalValues(current) {
-        if (typeof current === 'object' && current !== null) {
-            for (const [key, value] of Object.entries(current)) {
-                if (fieldNames.includes(key) && typeof value === 'number' && Number.isInteger(value)) {
-                    const num = value;
-                    if (!octalMap.has(num)) {
-                        const octalValue = num.toString(8);
-                        const finalValue = includePrefix ? `0o${octalValue}` : octalValue;
-                        octalMap.set(num, finalValue);
-                        // Create a unique placeholder that won't be quoted
-                        placeholderMap.set(num, `__OCTAL_${num}_PLACEHOLDER__`);
-                    }
-                }
-                else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                    collectOctalValues(value);
-                }
-                else if (Array.isArray(value)) {
-                    value.forEach(item => {
-                        if (typeof item === 'object' && item !== null) {
-                            collectOctalValues(item);
-                        }
-                    });
-                }
+  const { includePrefix = true } = options || {};
+  const octalMap = /* @__PURE__ */ new Map();
+  const placeholderMap = /* @__PURE__ */ new Map();
+  function collectOctalValues(current) {
+    if (typeof current === "object" && current !== null) {
+      for (const [key, value] of Object.entries(current)) {
+        if (fieldNames.includes(key) && typeof value === "number" && Number.isInteger(value)) {
+          const num = value;
+          if (!octalMap.has(num)) {
+            const octalValue = num.toString(8);
+            const finalValue = includePrefix ? `0o${octalValue}` : octalValue;
+            octalMap.set(num, finalValue);
+            placeholderMap.set(num, `__OCTAL_${num}_PLACEHOLDER__`);
+          }
+        } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+          collectOctalValues(value);
+        } else if (Array.isArray(value)) {
+          value.forEach((item) => {
+            if (typeof item === "object" && item !== null) {
+              collectOctalValues(item);
             }
+          });
         }
+      }
     }
-    // First pass: collect all octal values
-    collectOctalValues(obj);
-    // Second pass: replace with placeholders
-    const transformedObj = JSON.parse(JSON.stringify(obj));
-    function replacePlaceholders(current) {
-        if (typeof current === 'object' && current !== null) {
-            for (const [key, value] of Object.entries(current)) {
-                if (fieldNames.includes(key) && typeof value === 'number' && Number.isInteger(value)) {
-                    const placeholder = placeholderMap.get(value);
-                    if (placeholder) {
-                        current[key] = placeholder;
-                    }
-                }
-                else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                    replacePlaceholders(value);
-                }
-                else if (Array.isArray(value)) {
-                    value.forEach(item => {
-                        if (typeof item === 'object' && item !== null) {
-                            replacePlaceholders(item);
-                        }
-                    });
-                }
+  }
+  collectOctalValues(obj);
+  const transformedObj = JSON.parse(JSON.stringify(obj));
+  function replacePlaceholders(current) {
+    if (typeof current === "object" && current !== null) {
+      for (const [key, value] of Object.entries(current)) {
+        if (fieldNames.includes(key) && typeof value === "number" && Number.isInteger(value)) {
+          const placeholder = placeholderMap.get(value);
+          if (placeholder) {
+            current[key] = placeholder;
+          }
+        } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+          replacePlaceholders(value);
+        } else if (Array.isArray(value)) {
+          value.forEach((item) => {
+            if (typeof item === "object" && item !== null) {
+              replacePlaceholders(item);
             }
+          });
         }
+      }
     }
-    replacePlaceholders(transformedObj);
-    // Generate YAML
-    let yamlContent = dump(transformedObj, {
-        indent: 2,
-        lineWidth: -1,
-        noRefs: true,
-        quotingType: '"',
-        forceQuotes: false
-    });
-    // Replace placeholders with actual octal values
-    placeholderMap.forEach((placeholder, originalValue) => {
-        const octalValue = octalMap.get(originalValue);
-        if (octalValue) {
-            // Replace both quoted and unquoted versions
-            yamlContent = yamlContent.replace(new RegExp(`["']?${placeholder}["']?`, 'g'), octalValue);
-        }
-    });
-    return yamlContent;
+  }
+  replacePlaceholders(transformedObj);
+  let yamlContent = dump(transformedObj, {
+    indent: 2,
+    lineWidth: -1,
+    noRefs: true,
+    quotingType: '"',
+    forceQuotes: false
+  });
+  placeholderMap.forEach((placeholder, originalValue) => {
+    const octalValue = octalMap.get(originalValue);
+    if (octalValue) {
+      yamlContent = yamlContent.replace(new RegExp(`["']?${placeholder}["']?`, "g"), octalValue);
+    }
+  });
+  return yamlContent;
 }
 
 var re = {exports: {}};
@@ -36973,186 +36954,163 @@ function _getGlobal(key, defaultValue) {
 }
 
 class NFPMInstaller {
-    static async install(version, skipInstall) {
-        if (skipInstall) {
-            info('Skipping nFPM installation as requested');
-            return;
-        }
-        if (!version) {
-            info('No nFPM version specified, assuming pre-installed');
-            await this.verifyInstallation();
-            return;
-        }
-        info('Installing nFPM...');
-        let nfpmPath = find('nfpm', version);
-        if (!nfpmPath) {
-            info(`nFPM version ${version} not found in cache, downloading...`);
-            const actualVersion = await this.resolveVersion(version);
-            const downloadUrl = this.getDownloadUrl(actualVersion);
-            const downloadPath = await downloadTool(downloadUrl);
-            const extractPath = await extractTar(downloadPath, undefined, 'xz');
-            nfpmPath = await cacheDir(extractPath, 'nfpm', actualVersion);
-        }
-        addPath(nfpmPath);
-        // Verify installation
-        await this.verifyInstallation();
+  static async install(version, skipInstall) {
+    if (skipInstall) {
+      info("Skipping nFPM installation as requested");
+      return;
     }
-    static async verifyInstallation() {
-        try {
-            await exec('nfpm', ['--version']);
-            info('✅ nFPM is available and ready');
-        }
-        catch (error) {
-            throw new Error('nFPM is not available. Please install nFPM or provide a version to install.', { cause: error });
-        }
+    if (!version) {
+      info("No nFPM version specified, assuming pre-installed");
+      await this.verifyInstallation();
+      return;
     }
-    static async resolveVersion(version) {
-        if (version === 'latest') {
-            const response = await fetch('https://api.github.com/repos/goreleaser/nfpm/releases/latest');
-            if (!response.ok) {
-                throw new Error(`Failed to fetch latest nFPM release: ${response.statusText}`);
-            }
-            const data = await response.json();
-            const release = data;
-            return release.tag_name.replace(/^v/, '');
-        }
-        return version;
+    info("Installing nFPM...");
+    let nfpmPath = find("nfpm", version);
+    if (!nfpmPath) {
+      info(`nFPM version ${version} not found in cache, downloading...`);
+      const actualVersion = await this.resolveVersion(version);
+      const downloadUrl = this.getDownloadUrl(actualVersion);
+      const downloadPath = await downloadTool(downloadUrl);
+      const extractPath = await extractTar(downloadPath, void 0, "xz");
+      nfpmPath = await cacheDir(extractPath, "nfpm", actualVersion);
     }
-    static getDownloadUrl(version) {
-        return `https://github.com/goreleaser/nfpm/releases/download/v${version}/nfpm_${version}_Linux_x86_64.tar.gz`;
+    addPath(nfpmPath);
+    await this.verifyInstallation();
+  }
+  static async verifyInstallation() {
+    try {
+      await exec("nfpm", ["--version"]);
+      info("\u2705 nFPM is available and ready");
+    } catch (error) {
+      throw new Error("nFPM is not available. Please install nFPM or provide a version to install.", { cause: error });
     }
+  }
+  static async resolveVersion(version) {
+    if (version === "latest") {
+      const response = await fetch("https://api.github.com/repos/goreleaser/nfpm/releases/latest");
+      if (!response.ok) {
+        throw new Error(`Failed to fetch latest nFPM release: ${response.statusText}`);
+      }
+      const data = await response.json();
+      const release = data;
+      return release.tag_name.replace(/^v/, "");
+    }
+    return version;
+  }
+  static getDownloadUrl(version) {
+    return `https://github.com/goreleaser/nfpm/releases/download/v${version}/nfpm_${version}_Linux_x86_64.tar.gz`;
+  }
 }
 class PackageBuilder {
-    static async buildPackages(configFile, target, formats) {
-        startGroup('Building packages...');
-        const pkgFormats = this.parseFormats(formats);
-        const packages = [];
-        for (const format of pkgFormats) {
-            info(`Building ${format.toUpperCase()} package...`);
-            await exec('nfpm', [
-                'package',
-                '--packager', format,
-                '--target', target,
-                '--config', configFile
-            ]);
-            // Find the generated package for this format
-            const packageInfo = await this.findGeneratedPackage(target, format);
-            packages.push(packageInfo);
-            // Display package information
-            await this.displayPackageInfo(packageInfo);
-        }
-        endGroup();
-        return packages;
+  static async buildPackages(configFile, target, formats) {
+    startGroup("Building packages...");
+    const pkgFormats = this.parseFormats(formats);
+    const packages = [];
+    for (const format of pkgFormats) {
+      info(`Building ${format.toUpperCase()} package...`);
+      await exec("nfpm", [
+        "package",
+        "--packager",
+        format,
+        "--target",
+        target,
+        "--config",
+        configFile
+      ]);
+      const packageInfo = await this.findGeneratedPackage(target, format);
+      packages.push(packageInfo);
+      await this.displayPackageInfo(packageInfo);
     }
-    static parseFormats(formatsInput) {
-        const formats = formatsInput
-            .split(',')
-            .map(format => format.trim().toLowerCase())
-            .filter(format => format);
-        // Validate formats
-        const validFormats = ['deb', 'rpm', 'apk', 'archlinux'];
-        for (const format of formats) {
-            if (!validFormats.includes(format)) {
-                throw new Error(`Invalid package format: ${format}. Valid formats are: ${validFormats.join(', ')}`);
-            }
-        }
-        return formats.length > 0 ? formats : ['deb'];
+    endGroup();
+    return packages;
+  }
+  static parseFormats(formatsInput) {
+    const formats = formatsInput.split(",").map((format) => format.trim().toLowerCase()).filter((format) => format);
+    const validFormats = ["deb", "rpm", "apk", "archlinux"];
+    for (const format of formats) {
+      if (!validFormats.includes(format)) {
+        throw new Error(`Invalid package format: ${format}. Valid formats are: ${validFormats.join(", ")}`);
+      }
     }
-    static async findGeneratedPackage(targetDir, format) {
-        const files = await promises.readdir(targetDir);
-        // Define file extensions for each format
-        const extensions = {
-            deb: '.deb',
-            rpm: '.rpm',
-            apk: '.apk',
-            archlinux: '.pkg.tar.xz'
-        };
-        const extension = extensions[format];
-        const packageFile = files.find(file => file.endsWith(extension));
-        if (!packageFile) {
-            throw new Error(`No ${format.toUpperCase()} package found in ${targetDir}`);
-        }
-        return {
-            path: path__default.join(targetDir, packageFile),
-            filename: packageFile,
-            format: format
-        };
+    return formats.length > 0 ? formats : ["deb"];
+  }
+  static async findGeneratedPackage(targetDir, format) {
+    const files = await promises.readdir(targetDir);
+    const extensions = {
+      deb: ".deb",
+      rpm: ".rpm",
+      apk: ".apk",
+      archlinux: ".pkg.tar.xz"
+    };
+    const extension = extensions[format];
+    const packageFile = files.find((file) => file.endsWith(extension));
+    if (!packageFile) {
+      throw new Error(`No ${format.toUpperCase()} package found in ${targetDir}`);
     }
-    static async displayPackageInfo(packageInfo) {
-        info(`📦 Generated ${packageInfo.format.toUpperCase()} package: ${packageInfo.filename}`);
-        try {
-            switch (packageInfo.format) {
-                case 'deb':
-                    info('Package information:');
-                    await exec('dpkg-deb', ['--info', packageInfo.path]);
-                    info('Package contents:');
-                    await exec('dpkg-deb', ['--contents', packageInfo.path]);
-                    break;
-                case 'rpm':
-                    info('Package information:');
-                    await exec('rpm', ['-qip', packageInfo.path]);
-                    info('Package contents:');
-                    await exec('rpm', ['-qlp', packageInfo.path]);
-                    break;
-                case 'apk':
-                    info('Package information:');
-                    await exec('apk', ['info', '--contents', packageInfo.path]);
-                    break;
-                case 'archlinux':
-                    info('Package information:');
-                    await exec('tar', ['-tf', packageInfo.path]);
-                    break;
-            }
-        }
-        catch (error) {
-            warning(`Could not display ${packageInfo.format.toUpperCase()} package info: ${error.message}`);
-        }
-    }
-}
-
-/**
- * The main function for the action.
- *
- * @returns Resolves when the action is complete.
- */
-async function run() {
+    return {
+      path: path__default.join(targetDir, packageFile),
+      filename: packageFile,
+      format
+    };
+  }
+  static async displayPackageInfo(packageInfo) {
+    info(`\u{1F4E6} Generated ${packageInfo.format.toUpperCase()} package: ${packageInfo.filename}`);
     try {
-        info('Starting NFPM package build process...');
-        const nfpmVersion = getInput('nfpm-version') || '';
-        const skipInstall = getBooleanInput('skip-install');
-        const configFile = getInput('config-file') || '.nfpm.yaml';
-        const formats = getInput('formats') || 'deb';
-        const target = getInput('target') || 'dist';
-        const contentFiles = ContentFileParser.parse(getInput('contents') || '');
-        if (contentFiles.length > 0) {
-            await FileValidator.validateSourceFiles(contentFiles);
-        }
-        await ConfigGenerator.generateNFPMConfig(configFile, contentFiles);
-        await NFPMInstaller.install(nfpmVersion, skipInstall);
-        // Create output directory
-        await mkdirP(target);
-        // Build packages
-        const packages = await PackageBuilder.buildPackages(configFile, target, formats);
-        // Set outputs
-        const packagePaths = packages.map(pkg => pkg.path);
-        const packageFilenames = packages.map(pkg => pkg.filename);
-        setOutput('packages', packagePaths.join(','));
-        setOutput('config-file', configFile);
-        info('✅ Package build completed successfully!');
-        info(`📦 Generated packages: ${packageFilenames.join(', ')}`);
-        info(`📄 Config file: ${configFile}`);
+      switch (packageInfo.format) {
+        case "deb":
+          info("Package information:");
+          await exec("dpkg-deb", ["--info", packageInfo.path]);
+          info("Package contents:");
+          await exec("dpkg-deb", ["--contents", packageInfo.path]);
+          break;
+        case "rpm":
+          info("Package information:");
+          await exec("rpm", ["-qip", packageInfo.path]);
+          info("Package contents:");
+          await exec("rpm", ["-qlp", packageInfo.path]);
+          break;
+        case "apk":
+          info("Package information:");
+          await exec("apk", ["info", "--contents", packageInfo.path]);
+          break;
+        case "archlinux":
+          info("Package information:");
+          await exec("tar", ["-tf", packageInfo.path]);
+          break;
+      }
+    } catch (error) {
+      warning(`Could not display ${packageInfo.format.toUpperCase()} package info: ${error.message}`);
     }
-    catch (error) {
-        // Fail the workflow run if an error occurs
-        if (error instanceof Error)
-            setFailed(error.message);
-    }
+  }
 }
 
-/**
- * The entrypoint for the action. This file simply imports and runs the action's
- * main logic.
- */
-/* istanbul ignore next */
+async function run() {
+  try {
+    info("Starting NFPM package build process...");
+    const nfpmVersion = getInput("nfpm-version") || "";
+    const skipInstall = getBooleanInput("skip-install");
+    const configFile = getInput("config-file") || ".nfpm.yaml";
+    const formats = getInput("formats") || "deb";
+    const target = getInput("target") || "dist";
+    const contentFiles = ContentFileParser.parse(getInput("contents") || "");
+    if (contentFiles.length > 0) {
+      await FileValidator.validateSourceFiles(contentFiles);
+    }
+    await ConfigGenerator.generateNFPMConfig(configFile, contentFiles);
+    await NFPMInstaller.install(nfpmVersion, skipInstall);
+    await mkdirP(target);
+    const packages = await PackageBuilder.buildPackages(configFile, target, formats);
+    const packagePaths = packages.map((pkg) => pkg.path);
+    const packageFilenames = packages.map((pkg) => pkg.filename);
+    setOutput("packages", packagePaths.join(","));
+    setOutput("config-file", configFile);
+    info("\u2705 Package build completed successfully!");
+    info(`\u{1F4E6} Generated packages: ${packageFilenames.join(", ")}`);
+    info(`\u{1F4C4} Config file: ${configFile}`);
+  } catch (error) {
+    if (error instanceof Error) setFailed(error.message);
+  }
+}
+
 run();
 //# sourceMappingURL=index.js.map

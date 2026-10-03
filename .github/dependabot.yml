@@ -20,6 +20,11 @@ updates:
       # Types track the node24 action runtime, not the latest Node release.
       - dependency-name: "@types/node"
         update-types: [version-update:semver-major]
+      # nfpm-build runs the TypeScript 7 CLI as "@typescript/native" while
+      # "typescript" is aliased to @typescript/typescript6 for tools that need
+      # the compiler API (typescript-eslint), which 7.0 does not ship.
+      - dependency-name: typescript
+        versions: [">=7"]
     groups:
       npm-security:
         applies-to: security-updates
