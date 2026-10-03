@@ -3,6 +3,15 @@ name: Prepare
 on:
   workflow_call:
     inputs:
+      versioning:
+        type: string
+        required: false
+        default: calver
+        description: |
+          Versioning strategy:
+            - calver: version follows the product release branches (vYY.M); the development branch builds the next release line.
+            - semver: version follows git tags (vX.Y.Z); any other ref builds on top of the latest tag reachable from HEAD.
+
       development-branch:
         type: string
         required: false
@@ -42,6 +51,30 @@ on:
         value: ${{ jobs.version.outputs.version }}
         description: Extracted version
 
+      version-build:
+        value: ${{ jobs.version.outputs.version-build }}
+        description: Package build number, appended after "-" (e.g., 130)
+
+      prerelease:
+        value: ${{ jobs.version.outputs.prerelease }}
+        description: Package version prerelease, appended after "~" (e.g., dev, dev~pr12); empty for releases
+
+      full-version:
+        value: ${{ jobs.version.outputs.full-version }}
+        description: Exact package version, including prerelease and build number (e.g., 26.4~dev-130, 1.4.0~dev~pr12-131, 1.4.0-132)
+
+      deb-component:
+        value: ${{ jobs.version.outputs.deb-component }}
+        description: Debian repository component to publish into (e.g., dev, 26.4-releases, main)
+
+      repository-environment:
+        value: ${{ jobs.version.outputs.repository-environment }}
+        description: GitHub environment used to publish (e.g., acceptance, 26.4-releases, releases)
+
+      release-tag:
+        value: ${{ jobs.version.outputs.release-tag }}
+        description: GitHub release tag; empty when the build is not a release (e.g., 26.4-130, v1.4.0)
+
       build-timestamp:
         value: ${{ jobs.version.outputs.build-timestamp }}
         description: UTC build timestamp in ISO-8601 format
@@ -68,6 +101,7 @@ jobs:
       id-token: write
 
     with:
+      versioning: ${{ inputs.versioning }}
       development-branch: ${{ inputs.development-branch }}
       triggered-branch: ${{ inputs.triggered-branch }}
       arch: ${{ inputs.arch }}
