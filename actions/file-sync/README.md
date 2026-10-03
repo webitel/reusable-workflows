@@ -20,6 +20,16 @@ With [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions
 - Assign users to the pull request
 - Render [Jinja](https://jinja.palletsprojects.com/)-style templates as use variables thanks to [Nunjucks](https://mozilla.github.io/nunjucks/)
 
+## ⬆️ Upgrading from v2
+
+v3 changes how sync commits and pull requests look and adds a manifest to every target repository:
+
+- **Removed inputs**: `COMMIT_EACH_FILE`, `ORIGINAL_MESSAGE`, `COMMIT_AS_PR_TITLE`, `COMMIT_PREFIX`, `COMMIT_BODY`. Each sync is one commit whose subject is built from the source commits; use `TITLE_PREFIX` to change its prefix.
+- **New inputs**: `TITLE_PREFIX`, `SYNC_NAME`, `FILE_HEADER`, `ON_DRIFT`, `DELETE_REMOVED`.
+- **Check out the source with `fetch-depth: 0`**, otherwise source commits cannot be listed.
+- **First run**: every target repository gets one pull request that adds `.github/file-sync/<SYNC_NAME>.yml` (and the headers, with `FILE_HEADER: true`). Merge these before relying on the source commit ranges in later pull requests.
+- An open v2 sync pull request is updated in place; its commits are recognized as file-sync's own.
+
 ## 📚 Usage
 
 
@@ -49,7 +59,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run GitHub File Sync
-        uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
+        uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
         with:
           GH_PAT: ${{ secrets.GH_PAT }}
 ```
@@ -249,7 +259,7 @@ If your source files contain characters that conflict with the default Nunjucks 
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     # Example: use ((* *)) for blocks, ((( ))) for variables, ((= =)) for comments
@@ -512,7 +522,7 @@ By default [file-sync](https://github.com/webitel/reusable-workflows/tree/main/a
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     PR_LABELS: |
@@ -528,7 +538,7 @@ You can tell [file-sync](https://github.com/webitel/reusable-workflows/tree/main
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     ASSIGNEES: user
@@ -542,7 +552,7 @@ You can tell [file-sync](https://github.com/webitel/reusable-workflows/tree/main
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     REVIEWERS: |
@@ -582,7 +592,7 @@ If your repo name contains invalid characters, like a dot ([BetaHuhn/repo-file-s
 **.github/workflows/sync.yml**
 
 ```yml
-uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
+uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
 with:
     GH_PAT: ${{ secrets.GH_PAT }}
     BRANCH_PREFIX: custom-branch
@@ -600,7 +610,7 @@ You can add more content to the PR body with the `PR_BODY` option. For example:
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     PR_BODY: This is your custom PR Body
@@ -617,7 +627,7 @@ A fork of each target repository will be created on this account, and all change
 Note: while you can open pull requests to target repositories without write access, some features, like applying labels, are not possible.
 
 ```yml
-uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
+uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
 with:
     GH_PAT: ${{ secrets.GH_PAT }}
     FORK: file-sync-bot
