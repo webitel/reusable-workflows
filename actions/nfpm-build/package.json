@@ -13,15 +13,15 @@
     "@actions/exec": "^3.0.0",
     "@actions/tool-cache": "^4.0.0",
     "@rollup/plugin-commonjs": "^29.0.2",
-    "js-yaml": "^4.1.1"
+    "js-yaml": "^4.3.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.27.0",
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-typescript": "^12.3.0",
-    "@tsconfig/node23": "^23.0.4",
+    "@tsconfig/node24": "^24.0.5",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25.5.0",
+    "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^4.1.0",
     "eslint": "^9.27.0",
     "prettier": "^3.8.1",
