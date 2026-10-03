@@ -25,7 +25,9 @@ const {
     FORK
 } = config
 
-import { dedent, execCmd, shellQuote } from './helpers.js'
+import { dedent, execCmd, shellQuote, prefixed } from './helpers.js'
+
+const DEFAULT_MESSAGE = prefixed(COMMIT_PREFIX, `synced file(s) with ${ GITHUB_REPOSITORY }`)
 
 export default class Git {
     constructor() {
@@ -228,7 +230,7 @@ export default class Git {
     }
 
     async commit(msg) {
-        let message = msg !== undefined ? msg : `${ COMMIT_PREFIX } synced file(s) with ${ GITHUB_REPOSITORY }`
+        let message = msg !== undefined ? msg : DEFAULT_MESSAGE
         if (COMMIT_BODY) {
             message += `\n\n${ COMMIT_BODY }`
         }
@@ -418,7 +420,7 @@ export default class Git {
         })
     }
 
-    async createOrUpdatePr(changedFiles, title) {
+    async createOrUpdatePr(changedFiles, title = DEFAULT_MESSAGE) {
         const body = dedent(`
 			synced local file(s) with [${ GITHUB_REPOSITORY }](${ GITHUB_SERVER_URL }/${ GITHUB_REPOSITORY }).
 
@@ -428,7 +430,7 @@ export default class Git {
 
 			---
 
-			This PR was created automatically by the [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) workflow run [#${ process.env.GITHUB_RUN_ID || 0 }](${ GITHUB_SERVER_URL }/${ GITHUB_REPOSITORY }/actions/runs/${ process.env.GITHUB_RUN_ID || 0 })
+			This PR was created automatically by the [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) workflow run [#${ process.env.GITHUB_RUN_ID || 0 }](${ GITHUB_SERVER_URL }/${ GITHUB_REPOSITORY }/actions/runs/${ process.env.GITHUB_RUN_ID || 0 })
 		`)
 
         if (this.existingPr) {
@@ -437,7 +439,7 @@ export default class Git {
             const { data } = await this.github.pulls.update({
                 owner: this.repo.user,
                 repo: this.repo.name,
-                title: `${ COMMIT_PREFIX } synced file(s) with ${ GITHUB_REPOSITORY }`,
+                title: title,
                 pull_number: this.existingPr.number,
                 body: body
             })
@@ -450,7 +452,7 @@ export default class Git {
         const { data } = await this.github.pulls.create({
             owner: this.repo.user,
             repo: this.repo.name,
-            title: title === undefined ? `${ COMMIT_PREFIX } synced file(s) with ${ GITHUB_REPOSITORY }` : title,
+            title: title,
             body: body,
             head: `${ FORK ? FORK : this.repo.user }:${ this.prBranch }`,
             base: this.baseBranch

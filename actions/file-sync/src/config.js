@@ -50,10 +50,8 @@ try {
             key: 'COMMIT_BODY',
             default: ''
         }),
-        COMMIT_PREFIX: getInput({
-            key: 'COMMIT_PREFIX',
-            default: '🔄'
-        }),
+        // Read directly: action-input-parser treats an empty value as unset, which makes the prefix impossible to disable.
+        COMMIT_PREFIX: process.env.INPUT_COMMIT_PREFIX !== undefined ? process.env.INPUT_COMMIT_PREFIX.trim() : '🔄',
         COMMIT_EACH_FILE: getInput({
             key: 'COMMIT_EACH_FILE',
             type: 'boolean',

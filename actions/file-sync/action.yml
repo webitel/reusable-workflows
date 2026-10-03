@@ -54,8 +54,9 @@ inputs:
 
   COMMIT_PREFIX:
     required: false
+    default: 🔄
     description: |
-      Prefix for commit message and pull request title. Defaults to 🔄
+      Prefix for commit message and pull request title. Set to an empty string to disable. Defaults to 🔄
 
   COMMIT_BODY:
     required: false

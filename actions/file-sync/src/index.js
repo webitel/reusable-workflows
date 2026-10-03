@@ -2,7 +2,7 @@ import * as core from '@actions/core'
 import * as fs from 'fs'
 
 import Git from './git.js'
-import { forEach, dedent, addTrailingSlash, pathIsDirectory, copy, remove, arrayEquals, setNunjucksTags } from './helpers.js'
+import { forEach, dedent, addTrailingSlash, pathIsDirectory, copy, remove, arrayEquals, setNunjucksTags, prefixed } from './helpers.js'
 
 import { parseConfig, default as config } from './config.js'
 
@@ -111,11 +111,11 @@ async function run() {
 
                     const message = {
                         true: {
-                            commit: useOriginalCommitMessage ? git.originalCommitMessage() : `${ COMMIT_PREFIX } synced local '${ file.dest }' with remote '${ file.source }'`,
+                            commit: useOriginalCommitMessage ? git.originalCommitMessage() : prefixed(COMMIT_PREFIX, `synced local '${ file.dest }' with remote '${ file.source }'`),
                             pr: `synced local ${ directory } <code>${ file.dest }</code> with remote ${ directory } <code>${ file.source }</code>`
                         },
                         false: {
-                            commit: useOriginalCommitMessage ? git.originalCommitMessage() : `${ COMMIT_PREFIX } created local '${ file.dest }' from remote '${ file.source }'`,
+                            commit: useOriginalCommitMessage ? git.originalCommitMessage() : prefixed(COMMIT_PREFIX, `created local '${ file.dest }' from remote '${ file.source }'`),
                             pr: `created local ${ directory } <code>${ file.dest }</code> ${ otherFiles } from remote ${ directory } <code>${ file.source }</code>`
                         }
                     }

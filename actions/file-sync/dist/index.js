@@ -42216,10 +42216,8 @@ try {
       key: "COMMIT_BODY",
       default: ""
     }),
-    COMMIT_PREFIX: libExports.getInput({
-      key: "COMMIT_PREFIX",
-      default: "\u{1F504}"
-    }),
+    // Read directly: action-input-parser treats an empty value as unset, which makes the prefix impossible to disable.
+    COMMIT_PREFIX: process.env.INPUT_COMMIT_PREFIX !== void 0 ? process.env.INPUT_COMMIT_PREFIX.trim() : "\u{1F504}",
     COMMIT_EACH_FILE: libExports.getInput({
       key: "COMMIT_EACH_FILE",
       type: "boolean",
@@ -48942,7 +48940,7 @@ async function copy(src, dest, isDirectory, file) {
     const srcFileList = await listFiles(src);
     const destFileList = await listFiles(dest);
     for (const destFile of destFileList) {
-      if (destFile.startsWith(".git")) return;
+      if (destFile.split(path.sep)[0] === ".git") continue;
       if (srcFileList.indexOf(destFile) === -1) {
         const filePath = path.join(dest, destFile);
         debug(`Found an orphaned file in the target repo - ${filePath}`);
@@ -48963,6 +48961,9 @@ async function remove(src) {
 function arrayEquals(array1, array2) {
   return Array.isArray(array1) && Array.isArray(array2) && array1.length === array2.length && array1.every((value, i) => value === array2[i]);
 }
+function prefixed(prefix, text) {
+  return prefix ? `${prefix} ${text}` : text;
+}
 
 const {
   GITHUB_TOKEN,
@@ -48981,6 +48982,7 @@ const {
   BRANCH_PREFIX,
   FORK: FORK$1
 } = config;
+const DEFAULT_MESSAGE = prefixed(COMMIT_PREFIX$1, `synced file(s) with ${GITHUB_REPOSITORY}`);
 class Git {
   constructor() {
     const Octokit = GitHub.plugin(throttling);
@@ -49145,7 +49147,7 @@ ${string}`.split("\ndiff --git").slice(1).reduce((resultDict, fileDiff) => {
     return porcelainExports.parse(statusOutput).length !== 0;
   }
   async commit(msg) {
-    let message = msg !== void 0 ? msg : `${COMMIT_PREFIX$1} synced file(s) with ${GITHUB_REPOSITORY}`;
+    let message = msg !== void 0 ? msg : DEFAULT_MESSAGE;
     if (COMMIT_BODY) {
       message += `
 
@@ -49305,7 +49307,7 @@ ${COMMIT_BODY}`;
       body: this.existingPr.body.replace("\u26A0\uFE0F This PR is being automatically resynced \u26A0\uFE0F", "")
     });
   }
-  async createOrUpdatePr(changedFiles, title) {
+  async createOrUpdatePr(changedFiles, title = DEFAULT_MESSAGE) {
     const body = dedent(`
 			synced local file(s) with [${GITHUB_REPOSITORY}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}).
 
@@ -49315,14 +49317,14 @@ ${COMMIT_BODY}`;
 
 			---
 
-			This PR was created automatically by the [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) workflow run [#${process.env.GITHUB_RUN_ID || 0}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID || 0})
+			This PR was created automatically by the [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) workflow run [#${process.env.GITHUB_RUN_ID || 0}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID || 0})
 		`);
     if (this.existingPr) {
       info(`Overwriting existing PR`);
       const { data: data2 } = await this.github.pulls.update({
         owner: this.repo.user,
         repo: this.repo.name,
-        title: `${COMMIT_PREFIX$1} synced file(s) with ${GITHUB_REPOSITORY}`,
+        title,
         pull_number: this.existingPr.number,
         body
       });
@@ -49332,7 +49334,7 @@ ${COMMIT_BODY}`;
     const { data } = await this.github.pulls.create({
       owner: this.repo.user,
       repo: this.repo.name,
-      title: title === void 0 ? `${COMMIT_PREFIX$1} synced file(s) with ${GITHUB_REPOSITORY}` : title,
+      title,
       body,
       head: `${FORK$1 ? FORK$1 : this.repo.user}:${this.prBranch}`,
       base: this.baseBranch
@@ -49499,11 +49501,11 @@ async function run() {
           const useOriginalCommitMessage = ORIGINAL_MESSAGE && git.isOneCommitPush() && arrayEquals(await git.getChangesFromLastCommit(file.source), await git.changes(file.dest));
           const message = {
             true: {
-              commit: useOriginalCommitMessage ? git.originalCommitMessage() : `${COMMIT_PREFIX} synced local '${file.dest}' with remote '${file.source}'`,
+              commit: useOriginalCommitMessage ? git.originalCommitMessage() : prefixed(COMMIT_PREFIX, `synced local '${file.dest}' with remote '${file.source}'`),
               pr: `synced local ${directory} <code>${file.dest}</code> with remote ${directory} <code>${file.source}</code>`
             },
             false: {
-              commit: useOriginalCommitMessage ? git.originalCommitMessage() : `${COMMIT_PREFIX} created local '${file.dest}' from remote '${file.source}'`,
+              commit: useOriginalCommitMessage ? git.originalCommitMessage() : prefixed(COMMIT_PREFIX, `created local '${file.dest}' from remote '${file.source}'`),
               pr: `created local ${directory} <code>${file.dest}</code> ${otherFiles} from remote ${directory} <code>${file.source}</code>`
             }
           };

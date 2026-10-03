@@ -181,7 +181,7 @@ export async function copy(src, dest, isDirectory, file) {
         const destFileList = await listFiles(dest)
 
         for (const destFile of destFileList) {
-            if (destFile.startsWith('.git')) return
+            if (destFile.split(path.sep)[0] === '.git') continue
             if (srcFileList.indexOf(destFile) === -1) {
                 const filePath = path.join(dest, destFile)
                 core.debug(`Found an orphaned file in the target repo - ${ filePath }`)
@@ -206,4 +206,8 @@ export async function remove(src) {
 
 export function arrayEquals(array1, array2) {
     return Array.isArray(array1) && Array.isArray(array2) && array1.length === array2.length && array1.every((value, i) => value === array2[i])
+}
+// Prepends prefix to text, separated by a space; an empty prefix leaves text unchanged.
+export function prefixed(prefix, text) {
+    return prefix ? `${ prefix } ${ text }` : text
 }

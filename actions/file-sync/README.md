@@ -8,7 +8,7 @@ Keep files like Action workflows or entire directories in sync between multiple 
 
 ## 👋 Introduction
 
-With [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) you can sync files, like workflow `.yml` files, configuration files or whole directories between repositories or branches. It works by running a GitHub Action in your main repository everytime you push something to that repo. The action will use a `sync.yml` config file to figure out which files it should sync where. If it finds a file which is out of sync it will open a pull request in the target repository with the changes.
+With [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) you can sync files, like workflow `.yml` files, configuration files or whole directories between repositories or branches. It works by running a GitHub Action in your main repository everytime you push something to that repo. The action will use a `sync.yml` config file to figure out which files it should sync where. If it finds a file which is out of sync it will open a pull request in the target repository with the changes.
 
 ## 🚀 Features
 
@@ -46,7 +46,7 @@ jobs:
         uses: actions/checkout@main
       
       - name: Run GitHub File Sync
-        uses: webitel/reusable-workflows/actions/file-sync-action@v1
+        uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
         with:
           GH_PAT: ${{ secrets.GH_PAT }}
 ```
@@ -123,7 +123,7 @@ This feature relies on standard YAML anchor/alias behavior and is supported by t
 
 ## ⚙️ Action Inputs
 
-Here are all the inputs [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) takes:
+Here are all the inputs [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) takes:
 
 | Key                       | Value                                                                                                                                          | Required                                         | Default                        |
 |---------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|--------------------------------|
@@ -135,7 +135,7 @@ Here are all the inputs [file-sync-action](https://github.com/webitel/reusable-w
 | `ASSIGNEES`               | Users to assign to the pull request                                                                                                            | **No**                                           | N/A                            |
 | `REVIEWERS`               | Users to request a review of the pull request from                                                                                             | **No**                                           | N/A                            |
 | `TEAM_REVIEWERS`          | Teams to request a review of the pull request from                                                                                             | **No**                                           | N/A                            |
-| `COMMIT_PREFIX`           | Prefix for commit message and pull request title                                                                                               | **No**                                           | 🔄                             |
+| `COMMIT_PREFIX`           | Prefix for commit message and pull request title, set to an empty string to disable                                                           | **No**                                           | 🔄                             |
 | `COMMIT_BODY`             | Commit message body. Will be appended to commit message, separated by two line returns.                                                        | **No**                                           | ''                             |
 | `PR_BODY`                 | Additional content to add in the PR description.                                                                                               | **No**                                           | ''                             |
 | `ORIGINAL_MESSAGE`        | Use original commit message instead. Only works if the file(s) were changed and the action was triggered by pushing a single commit.           | **No**                                           | false                          |
@@ -163,7 +163,7 @@ The action sets the `pull_request_urls` output to the URLs of any created Pull R
 
 ## 🛠️ Sync Configuration
 
-To tell [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) what files to sync where, you have to create a `sync.yml` file in the `.github` directory of your main repository (see [action-inputs](#%EF%B8%8F-action-inputs) on how to change the location).
+To tell [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) what files to sync where, you have to create a `sync.yml` file in the `.github` directory of your main repository (see [action-inputs](#%EF%B8%8F-action-inputs) on how to change the location).
 
 The top-level key should be used to specify the target repository in the format `username`/`repository-name`@`branch`, after that you can list all the files you want to sync to that individual repository:
 
@@ -241,7 +241,7 @@ If your source files contain characters that conflict with the default Nunjucks 
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     # Example: use ((* *)) for blocks, ((( ))) for variables, ((= =)) for comments
@@ -402,13 +402,13 @@ group:
 
 ### Custom labels
 
-By default [repo-file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) will add the `sync` label to every PR it creates. You can turn this off by setting `PR_LABELS` to false, or specify your own labels:
+By default [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) will add the `sync` label to every PR it creates. You can turn this off by setting `PR_LABELS` to false, or specify your own labels:
 
 **.github/workflows/sync.yml**
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     PR_LABELS: |
@@ -418,13 +418,13 @@ By default [repo-file-sync-action](https://github.com/webitel/reusable-workflows
 
 ### Assign a user to the PR
 
-You can tell [repo-file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) to assign users to the PR with `ASSIGNEES`:
+You can tell [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) to assign users to the PR with `ASSIGNEES`:
 
 **.github/workflows/sync.yml**
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     ASSIGNEES: user
@@ -432,13 +432,13 @@ You can tell [repo-file-sync-action](https://github.com/webitel/reusable-workflo
 
 ### Request a PR review
 
-You can tell [repo-file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) to request a review of the PR from users with `REVIEWERS` and from teams with `TEAM_REVIEWERS`:
+You can tell [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) to request a review of the PR from users with `REVIEWERS` and from teams with `TEAM_REVIEWERS`:
 
 **.github/workflows/sync.yml**
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     REVIEWERS: |
@@ -473,12 +473,12 @@ group:
 
 By default all new branches created in the target repo will be in the this format: `repo-sync/SOURCE_REPO_NAME/SOURCE_BRANCH_NAME`, with the SOURCE_REPO_NAME being replaced with the name of the source repo and SOURCE_BRANCH_NAME with the name of the source branch.
 
-If your repo name contains invalid characters, like a dot ([#32](https://github.com/webitel/reusable-workflows/actions/file-sync-action/issues/32)), you can specify a different prefix for the branch (the text before `/SOURCE_BRANCH_NAME`):
+If your repo name contains invalid characters, like a dot ([BetaHuhn/repo-file-sync-action#32](https://github.com/BetaHuhn/repo-file-sync-action/issues/32)), you can specify a different prefix for the branch (the text before `/SOURCE_BRANCH_NAME`):
 
 **.github/workflows/sync.yml**
 
 ```yml
-uses: webitel/reusable-workflows/actions/file-sync-action@v1
+uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
 with:
     GH_PAT: ${{ secrets.GH_PAT }}
     BRANCH_PREFIX: custom-branch
@@ -496,7 +496,7 @@ You can specify a custom commit body. This will be appended to the commit messag
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     COMMIT_BODY: "Change-type: patch"
@@ -517,7 +517,7 @@ You can add more content to the PR body with the `PR_BODY` option. For example:
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     PR_BODY: This is your custom PR Body
@@ -534,7 +534,7 @@ This is your custom PR Body
 
 ---
 
-This PR was created automatically by the file-sync-action workflow run xxx.
+This PR was created automatically by the file-sync workflow run xxx.
 ```
 
 ### Fork and pull request workflow
@@ -546,7 +546,7 @@ A fork of each target repository will be created on this account, and all change
 Note: while you can open pull requests to target repositories without write access, some features, like applying labels, are not possible.
 
 ```yml
-uses: webitel/reusable-workflows/actions/file-sync-action@v1
+uses: webitel/reusable-workflows/actions/file-sync@file-sync-v2
 with:
     GH_PAT: ${{ secrets.GH_PAT }}
     FORK: file-sync-bot
@@ -560,4 +560,4 @@ The actual source code of this library is in the `src` folder.
 
 - run `yarn lint` or `npm run lint` to run eslint.
 - run `yarn start` or `npm run start` to run the Action locally.
-- run `yarn build` or `npm run build` to produce a production version of [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) in the `dist` folder.
+- run `yarn build` or `npm run build` to produce a production version of [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) in the `dist` folder.
