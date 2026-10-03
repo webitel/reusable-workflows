@@ -6,6 +6,7 @@ import config from './config.js'
 import { forEach, addTrailingSlash, pathIsDirectory, copy } from './helpers.js'
 import { manifestPath, readManifest, parseManifest, serializeManifest, sameFiles, sha256, findOwnershipConflicts, findDrift } from './manifest.js'
 import { sourceCommits } from './history.js'
+import { withHeader } from './header.js'
 import { syncSubject, commitMessage, pullRequestBody, parseState, journalComment, closedComment, foreignCommitsComment, FOREIGN_COMMITS_MARKER } from './message.js'
 
 const {
@@ -25,7 +26,8 @@ const {
     FORK,
     GIT_EMAIL,
     ON_DRIFT,
-    DELETE_REMOVED
+    DELETE_REMOVED,
+    FILE_HEADER
 } = config
 
 const runUrl = () => `${ GITHUB_SERVER_URL }/${ GITHUB_REPOSITORY }/actions/runs/${ process.env.GITHUB_RUN_ID || 0 }`
@@ -53,6 +55,14 @@ async function syncFiles(git, files) {
         if (isDirectory) core.info(`Source is directory`)
 
         const written = await copy(source, dest, isDirectory, file)
+
+        if (FILE_HEADER && file.header) {
+            for (const { source: sourceFile, dest: destFile } of written) {
+                const content = await fs.promises.readFile(destFile, 'utf8')
+                const marked = withHeader(content, { file: path.relative(git.workingDir, destFile), repository: GITHUB_REPOSITORY, source: path.normalize(sourceFile) })
+                if (marked !== content) await fs.promises.writeFile(destFile, marked)
+            }
+        }
 
         // Files with replace: false belong to the target repository once created
         if (file.replace !== false) managed.push(...written)

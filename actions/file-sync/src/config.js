@@ -81,6 +81,11 @@ try {
             type: 'boolean',
             default: false
         }),
+        FILE_HEADER: getInput({
+            key: 'FILE_HEADER',
+            type: 'boolean',
+            default: false
+        }),
         DELETE_REMOVED: getInput({
             key: 'DELETE_REMOVED',
             type: 'boolean',
@@ -213,6 +218,7 @@ const parseFiles = (files) => {
                 template: item.template === undefined ? TEMPLATE_DEFAULT : item.template,
                 replace: item.replace === undefined ? REPLACE_DEFAULT : item.replace,
                 deleteOrphaned: item.deleteOrphaned === undefined ? DELETE_ORPHANED_DEFAULT : item.deleteOrphaned,
+                header: item.header !== false,
                 exclude: parseExclude(item.exclude, item.source)
             }
         }
