@@ -21,7 +21,7 @@ const {
     FORK
 } = config
 
-import { dedent, execCmd, shellQuote } from './helpers.js'
+import { execCmd, shellQuote } from './helpers.js'
 
 export default class Git {
     constructor() {
@@ -43,7 +43,7 @@ export default class Git {
 
         const octokit = new Octokit(options)
 
-        // We only need the rest client
+        this.octokit = octokit
         this.github = octokit.rest
     }
 
@@ -355,26 +355,71 @@ export default class Git {
         return this.existingPr
     }
 
-    async setPrWarning() {
-        await this.github.pulls.update({
+    async listPrCommits() {
+        return this.octokit.paginate(this.github.pulls.listCommits, {
             owner: this.repo.user,
             repo: this.repo.name,
             pull_number: this.existingPr.number,
-            body: dedent(`
-				⚠️ This PR is being automatically resynced ⚠️
-
-				${ this.existingPr.body }
-			`)
+            per_page: 100
         })
     }
 
-    async removePrWarning() {
+    async listPrComments() {
+        return this.octokit.paginate(this.github.issues.listComments, {
+            owner: this.repo.user,
+            repo: this.repo.name,
+            issue_number: this.existingPr.number,
+            per_page: 100
+        })
+    }
+
+    async commentPr(body) {
+        await this.github.issues.createComment({
+            owner: this.repo.user,
+            repo: this.repo.name,
+            issue_number: this.existingPr.number,
+            body
+        })
+    }
+
+    // Closes the existing PR and deletes its branch
+    async closePr() {
         await this.github.pulls.update({
             owner: this.repo.user,
             repo: this.repo.name,
             pull_number: this.existingPr.number,
-            body: this.existingPr.body.replace('⚠️ This PR is being automatically resynced ⚠️', '')
+            state: 'closed'
         })
+        await execCmd(
+            `git push ${ FORK ? 'fork' : this.gitUrl } --delete ${ shellQuote(this.prBranch) }`,
+            this.workingDir
+        )
+    }
+
+    // Fetches the head of the existing PR branch and tells whether its paths have the same content as the staged sync
+    async prHeadMatches(paths) {
+        await execCmd(
+            `git fetch -q --depth 1 ${ FORK ? 'fork' : this.gitUrl } ${ shellQuote(this.prBranch) }`,
+            this.workingDir
+        )
+        try {
+            await execCmd(
+                `git diff --cached --quiet FETCH_HEAD -- ${ paths.map(shellQuote).join(' ') }`,
+                this.workingDir
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    // Content of a file at the fetched PR head, or undefined when it does not exist there
+    async prHeadFile(file) {
+        try {
+            return await execCmd(`git show ${ shellQuote(`FETCH_HEAD:${ file }`) }`, this.workingDir, false)
+        } catch {
+            return undefined
+        }
     }
 
     async createOrUpdatePr(title, body) {

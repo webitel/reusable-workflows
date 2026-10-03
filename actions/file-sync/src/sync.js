@@ -4,9 +4,9 @@ import * as path from 'path'
 
 import config from './config.js'
 import { forEach, addTrailingSlash, pathIsDirectory, copy } from './helpers.js'
-import { manifestPath, readManifest, serializeManifest, sameFiles, sha256, findOwnershipConflicts } from './manifest.js'
+import { manifestPath, readManifest, parseManifest, serializeManifest, sameFiles, sha256, findOwnershipConflicts } from './manifest.js'
 import { sourceCommits } from './history.js'
-import { syncSubject, commitMessage, pullRequestBody } from './message.js'
+import { syncSubject, commitMessage, pullRequestBody, parseState, journalComment, closedComment, foreignCommitsComment, FOREIGN_COMMITS_MARKER } from './message.js'
 
 const {
     CONFIG_PATH,
@@ -22,8 +22,11 @@ const {
     DRY_RUN,
     OVERWRITE_EXISTING_PR,
     SKIP_PR,
-    FORK
+    FORK,
+    GIT_EMAIL
 } = config
+
+const runUrl = () => `${ GITHUB_SERVER_URL }/${ GITHUB_REPOSITORY }/actions/runs/${ process.env.GITHUB_RUN_ID || 0 }`
 
 // Copies the configured files into the target working directory and returns the managed ones as { source, dest } pairs.
 async function syncFiles(git, files) {
@@ -63,6 +66,21 @@ async function manifestEntries(git, managed) {
     return entries
 }
 
+// Tells whether the open PR branch already has the staged content. The manifest is compared by its files only:
+// a newer source SHA alone must not rebuild the branch (that would re-run CI and dismiss approvals).
+async function openPrMatches(git, { files, manifestFile, manifestFiles, previousManifest }) {
+    const paths = new Set([
+        ...files.map((f) => f.dest),
+        ...Object.keys(manifestFiles),
+        ...Object.keys(previousManifest?.files || {})
+    ])
+    paths.delete(manifestFile)
+    if (!await git.prHeadMatches([ ...paths ])) return false
+
+    const prManifest = await git.prHeadFile(manifestFile)
+    return prManifest !== undefined && sameFiles(parseManifest(prManifest).files, manifestFiles)
+}
+
 async function decoratePullRequest(git) {
     if (FORK) return
 
@@ -87,9 +105,34 @@ async function decoratePullRequest(git) {
     }
 }
 
+// A commit is file-sync's own when it carries the Synced-From trailer or was authored by the PR author / sync identity
+function isOwnCommit(commit, pullRequest) {
+    if (/^Synced-From: /m.test(commit.commit.message)) return true
+    if (pullRequest.user?.login && commit.author?.login === pullRequest.user.login) return true
+    return Boolean(GIT_EMAIL) && commit.commit.author?.email === GIT_EMAIL
+}
+
+// Refuses to rebuild a PR branch that carries commits pushed by people, and tells them once in the PR
+async function guardForeignCommits(git, pullRequest) {
+    const foreign = (await git.listPrCommits()).filter((commit) => !isOwnCommit(commit, pullRequest))
+    if (foreign.length === 0) return false
+
+    core.warning(`PR #${ pullRequest.number } has commits that file-sync did not create; skipping ${ git.repo.fullName }`)
+    if (DRY_RUN === false) {
+        const comments = await git.listPrComments()
+        if (!comments.some((comment) => comment.body?.includes(FOREIGN_COMMITS_MARKER))) {
+            await git.commentPr(foreignCommitsComment({ runUrl: runUrl() }, foreign))
+        }
+    }
+    return true
+}
+
 /**
  * Syncs the files of one target repository in a single commit.
- * Returns { status, pullRequest }, status being up-to-date, dry-run, pushed (SKIP_PR) or pull-request.
+ * Returns { status, pullRequest }, status being one of
+ *   up-to-date, dry-run, pushed (SKIP_PR),
+ *   created / updated (pull request), unchanged (open pull request already has this content),
+ *   closed (open pull request no longer needed), skipped (pull request branch has foreign commits).
  */
 export async function syncRepository(git, item) {
     await git.initRepo(item.repo)
@@ -98,11 +141,10 @@ export async function syncRepository(git, item) {
     if (SKIP_PR === false) {
         await git.createPrBranch()
 
-        // Check for existing PR and add warning message that the PR maybe about to change
         existingPr = OVERWRITE_EXISTING_PR ? await git.findExistingPr() : undefined
-        if (existingPr && DRY_RUN === false) {
+        if (existingPr) {
             core.info(`Found existing PR ${ existingPr.number }`)
-            await git.setPrWarning()
+            if (await guardForeignCommits(git, existingPr)) return { status: 'skipped', pullRequest: existingPr }
         }
     }
 
@@ -121,8 +163,15 @@ export async function syncRepository(git, item) {
     const fileChanges = (await git.changedFiles()).filter(({ file }) => file !== manifestFile)
     if (fileChanges.length === 0 && previousManifest !== undefined && sameFiles(previousManifest.files, manifestFiles)) {
         core.info('File(s) already up to date')
-        if (existingPr) await git.removePrWarning()
-        return { status: 'up-to-date' }
+        if (!existingPr) return { status: 'up-to-date' }
+
+        core.info(`Closing PR #${ existingPr.number }: nothing left to sync`)
+        if (DRY_RUN === false) {
+            const history = { status: 'ok', to: await git.sourceSha(), commits: [] }
+            await git.commentPr(closedComment({ serverUrl: GITHUB_SERVER_URL, repository: GITHUB_REPOSITORY, runUrl: runUrl(), history }))
+            await git.closePr()
+        }
+        return { status: 'closed', pullRequest: existingPr }
     }
 
     await fs.promises.mkdir(path.dirname(path.join(git.workingDir, manifestFile)), { recursive: true })
@@ -156,12 +205,18 @@ export async function syncRepository(git, item) {
         serverUrl: GITHUB_SERVER_URL,
         repository: GITHUB_REPOSITORY,
         config: path.normalize(CONFIG_PATH),
-        runUrl: `${ GITHUB_SERVER_URL }/${ GITHUB_REPOSITORY }/actions/runs/${ process.env.GITHUB_RUN_ID || 0 }`,
+        runUrl: runUrl(),
         history,
         files,
+        stream: SYNC_NAME,
         extra: PR_BODY
     }
     const message = commitMessage(context)
+
+    if (existingPr && await openPrMatches(git, { files, manifestFile, manifestFiles, previousManifest })) {
+        core.info(`PR #${ existingPr.number } already contains these changes`)
+        return { status: 'unchanged', pullRequest: existingPr }
+    }
 
     if (DRY_RUN) {
         core.warning('Dry run, no changes will be pushed')
@@ -177,9 +232,11 @@ export async function syncRepository(git, item) {
 
     if (SKIP_PR) return { status: 'pushed' }
 
+    const previousState = parseState(existingPr?.body)
     const pullRequest = await git.createOrUpdatePr(syncSubject(context), pullRequestBody(context))
     core.notice(`Pull Request #${ pullRequest.number } created/updated: ${ pullRequest.html_url }`)
+    if (existingPr) await git.commentPr(journalComment(context, previousState))
     await decoratePullRequest(git)
 
-    return { status: 'pull-request', pullRequest }
+    return { status: existingPr ? 'updated' : 'created', pullRequest }
 }

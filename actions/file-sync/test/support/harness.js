@@ -95,6 +95,15 @@ export async function createSandbox() {
             return git(path.join(remotes, `${ fullName }.git`), 'branch', '--list', branch) !== ''
         },
 
+        // Starts a fake GitHub API that reads pull request commits from this sandbox's target repositories.
+        startApi() {
+            return startFakeGitHub({ remotes })
+        },
+
+        branchHead(fullName, branch) {
+            return git(path.join(remotes, `${ fullName }.git`), 'rev-parse', branch)
+        },
+
         // Runs the action in the source repository; inputs are action input names (e.g. SKIP_PR).
         runAction({ inputs = {}, env = {}, api } = {}) {
             const inputEnv = Object.fromEntries(Object.entries(inputs).map(([ key, value ]) => [ `INPUT_${ key }`, String(value) ]))
@@ -131,7 +140,7 @@ export async function createSandbox() {
 }
 
 // Minimal in-memory GitHub REST API for the endpoints the action uses.
-export async function startFakeGitHub() {
+export async function startFakeGitHub({ remotes } = {}) {
     const state = { pulls: [], comments: [], requests: [] }
 
     const send = (res, status, body) => {
@@ -140,6 +149,14 @@ export async function startFakeGitHub() {
     }
 
     const server = http.createServer(async (req, res) => {
+        try {
+            await handle(req, res)
+        } catch (err) {
+            send(res, 500, { message: `fake GitHub: ${ err.message }` })
+        }
+    })
+
+    const handle = async (req, res) => {
         let raw = ''
         for await (const chunk of req) raw += chunk
         const body = raw ? JSON.parse(raw) : {}
@@ -169,6 +186,16 @@ export async function startFakeGitHub() {
             return send(res, 201, pr)
         }
 
+        if ((m = url.pathname.match(/^\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/commits$/))) {
+            const pr = state.pulls.find((p) => p.repo === `${ m[1] }/${ m[2] }` && p.number === Number(m[3]))
+            const log = git(path.join(remotes, `${ pr.repo }.git`), 'log', '--reverse', '--format=%H%x1f%ae%x1f%B%x1e', `${ pr.base.ref }..${ pr.head.ref }`)
+            const commits = log.split('\x1e').map((entry) => entry.trim()).filter(Boolean).map((entry) => {
+                const [ sha, email, message ] = entry.split('\x1f')
+                return { sha, commit: { message: message.trim(), author: { email } }, author: null }
+            })
+            return send(res, 200, commits)
+        }
+
         if ((m = url.pathname.match(/^\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)$/))) {
             const pr = state.pulls.find((p) => p.repo === `${ m[1] }/${ m[2] }` && p.number === Number(m[3]))
             if (req.method === 'PATCH') Object.assign(pr, body)
@@ -189,7 +216,7 @@ export async function startFakeGitHub() {
         }
 
         send(res, 404, { message: `fake GitHub: ${ req.method } ${ url.pathname } not implemented` })
-    })
+    }
 
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
 

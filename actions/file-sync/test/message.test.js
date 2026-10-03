@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { syncSubject, commitMessage, pullRequestBody } from '../src/message.js'
+import { syncSubject, commitMessage, pullRequestBody, parseState, journalComment, closedComment } from '../src/message.js'
 
 const FROM = '9f8e7d6000000000000000000000000000000000'
 const TO = '1a2b3c4000000000000000000000000000000000'
@@ -86,4 +86,39 @@ test('pull request body links the source commit, changes and files', () => {
 
 test('pull request body omits source changes without a known range', () => {
     assert.doesNotMatch(pullRequestBody({ ...base, history: none }), /### Source changes/)
+})
+
+test('pull request body carries a state marker that parseState reads back', () => {
+    const body = pullRequestBody({ ...base, history: two, stream: 'golang-sync' })
+
+    assert.match(body, /\n<!-- file-sync:state \{.*\} -->$/)
+    assert.deepEqual(parseState(body), { stream: 'golang-sync', sourceSha: TO, commits: [ '56c90e3000', '48bb00e000' ] })
+})
+
+test('parseState returns undefined for a body without a marker', () => {
+    assert.equal(parseState('synced local file(s)'), undefined)
+    assert.equal(parseState(null), undefined)
+})
+
+test('journal comment lists the source commits added since the previous update', () => {
+    const previous = { stream: 'golang-sync', sourceSha: FROM, commits: [ '56c90e3000' ] }
+
+    assert.equal(journalComment({ ...base, history: two }, previous), [
+        'Updated by run [#42](https://github.com/webitel/reusable-configs/actions/runs/42): source `9f8e7d6` → `1a2b3c4`.',
+        '',
+        'New source commits:',
+        '- [`48bb00e`](https://github.com/webitel/reusable-configs/commit/48bb00e000) feat(golang)[PE-118]!: sync workflows'
+    ].join('\n'))
+})
+
+test('journal comment without new source commits says the PR was rebuilt', () => {
+    const previous = { stream: 'golang-sync', sourceSha: TO, commits: [ '56c90e3000', '48bb00e000' ] }
+
+    assert.equal(journalComment({ ...base, history: two }, previous),
+        'Updated by run [#42](https://github.com/webitel/reusable-configs/actions/runs/42): rebuilt on the current base branch, no new source commits.')
+})
+
+test('closed comment names the source commit the target already matches', () => {
+    assert.equal(closedComment({ ...base, history: none }),
+        'Closed by run [#42](https://github.com/webitel/reusable-configs/actions/runs/42): the target already matches [webitel/reusable-configs@1a2b3c4](https://github.com/webitel/reusable-configs/tree/1a2b3c4000000000000000000000000000000000), nothing left to sync.')
 })

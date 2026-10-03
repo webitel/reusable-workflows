@@ -383,6 +383,17 @@ Sync-Run: https://github.com/webitel/reusable-configs/actions/runs/123
 
 The pull request uses the subject as its title; its body links the source commit range, each source commit and each source file. `TITLE_PREFIX` changes `chore(sync)`.
 
+### Open sync pull requests
+
+With `OVERWRITE_EXISTING_PR` (default) each target repository has at most one sync pull request. Every run rebuilds its branch from the current base branch, so syncs that were not merged yet accumulate into it: the commit and title always cover all source commits since the last merged sync.
+
+- **New changes**: the branch is force-pushed, the title and body are updated and a comment lists the source commits added since the previous update.
+- **Same content**: when the branch already has exactly the files the sync would produce, nothing is pushed or edited, so CI does not re-run and approvals stay.
+- **Nothing left to sync** (e.g. the source change was reverted): the pull request is closed with a comment and its branch is deleted.
+- **Commits pushed by people**: if the branch has commits file-sync did not create (no `Synced-From:` trailer, not authored by the pull request author or `GIT_EMAIL`), the repository is skipped with a warning and a one-time comment instead of dropping those commits.
+
+The pull request body ends with a hidden `<!-- file-sync:state … -->` marker that records the source commits it contains.
+
 ### Manifest of managed files
 
 Every target repository gets a manifest at `.github/file-sync/<SYNC_NAME>.yml`, written in the same commit as the synced files. It lists each managed file with its source path and the SHA-256 of its content, plus the source repository, config and commit the content comes from:

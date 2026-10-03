@@ -9,6 +9,12 @@ const description = (subject) => subject.replace(/^\w+(\([^)]*\))?(\[[^\]]*\])?!
 
 const knownRange = (history) => history.status === 'ok' && history.from !== undefined
 
+const runLink = (runUrl) => `[#${ runUrl.split('/').pop() }](${ runUrl })`
+
+const commitLink = (repoUrl, commit) => `- [\`${ short(commit.sha) }\`](${ repoUrl }/commit/${ commit.sha }) ${ commit.subject }`
+
+const STATE_MARKER = /<!-- file-sync:state (\{.*\}) -->/
+
 /**
  * All builders take the same context:
  *   titlePrefix  - e.g. chore(sync)
@@ -18,6 +24,7 @@ const knownRange = (history) => history.status === 'ok' && history.from !== unde
  *   runUrl       - URL of the workflow run
  *   history      - result of sourceCommits()
  *   files        - changed files, [{ status: A|M|D, dest, source }]
+ *   stream       - sync stream name, stored in the pull request state marker
  */
 export function syncSubject({ titlePrefix, repository, history }) {
     const keys = jiraKeys(history.commits.map((c) => c.subject))
@@ -59,7 +66,7 @@ export function pullRequestBody(context) {
     if (knownRange(history) && history.commits.length > 0) {
         sections.push([
             `### Source changes ([${ short(history.from) }..${ short(history.to) }](${ repoUrl }/compare/${ history.from }...${ history.to }))`,
-            ...history.commits.map((c) => `- [\`${ short(c.sha) }\`](${ repoUrl }/commit/${ c.sha }) ${ c.subject }`)
+            ...history.commits.map((c) => commitLink(repoUrl, c))
         ].join('\n'))
     }
 
@@ -72,11 +79,52 @@ export function pullRequestBody(context) {
 
     if (extra) sections.push(extra)
 
+    // The state marker lets the next run tell which source commits this pull request already contains
+    const state = { stream: context.stream, sourceSha: history.to, commits: history.commits.map((c) => c.sha) }
     sections.push([
         '---',
-        `Created by [file-sync](${ ACTION_URL }), run [#${ runUrl.split('/').pop() }](${ runUrl }).`,
-        'This branch is rebuilt on every sync — do not push to it.'
+        `Created by [file-sync](${ ACTION_URL }), run ${ runLink(runUrl) }.`,
+        'This branch is rebuilt on every sync — do not push to it.',
+        `<!-- file-sync:state ${ JSON.stringify(state) } -->`
     ].join('\n'))
 
     return sections.join('\n\n')
+}
+
+export function parseState(body) {
+    const match = body?.match(STATE_MARKER)
+    return match ? JSON.parse(match[1]) : undefined
+}
+
+// Comment posted when an open sync pull request is rebuilt; previous is the state of the replaced content
+export function journalComment({ serverUrl, repository, runUrl, history }, previous) {
+    const known = new Set(previous?.commits || [])
+    const added = history.commits.filter((c) => !known.has(c.sha))
+
+    if (added.length === 0) return `Updated by run ${ runLink(runUrl) }: rebuilt on the current base branch, no new source commits.`
+
+    const range = previous?.sourceSha ? `source \`${ short(previous.sourceSha) }\` → \`${ short(history.to) }\`` : `source \`${ short(history.to) }\``
+    return [
+        `Updated by run ${ runLink(runUrl) }: ${ range }.`,
+        '',
+        'New source commits:',
+        ...added.map((c) => commitLink(`${ serverUrl }/${ repository }`, c))
+    ].join('\n')
+}
+
+export function closedComment({ serverUrl, repository, runUrl, history }) {
+    return `Closed by run ${ runLink(runUrl) }: the target already matches [${ repository }@${ short(history.to) }](${ serverUrl }/${ repository }/tree/${ history.to }), nothing left to sync.`
+}
+
+export const FOREIGN_COMMITS_MARKER = '<!-- file-sync:foreign-commits -->'
+
+export function foreignCommitsComment({ runUrl }, commits) {
+    return [
+        `Sync skipped by run ${ runLink(runUrl) }: this branch has commits that file-sync did not create, and rebuilding it would drop them:`,
+        '',
+        ...commits.map((c) => `- \`${ short(c.sha) }\` ${ c.commit.message.split('\n')[0] }`),
+        '',
+        'Move these changes to the source repository (or merge this pull request), then the next sync updates the branch again.',
+        FOREIGN_COMMITS_MARKER
+    ].join('\n')
 }

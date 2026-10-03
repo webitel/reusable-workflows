@@ -1,7 +1,7 @@
-import { test, before, after } from 'node:test'
+import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { createSandbox, startFakeGitHub } from './support/harness.js'
+import { createSandbox } from './support/harness.js'
 
 const CONFIG = `
 webitel/target:
@@ -11,10 +11,6 @@ webitel/target:
     dest: b.yml
 `
 const BRANCH = 'repo-sync/source/default'
-
-let api
-before(async () => { api = await startFakeGitHub() })
-after(() => api.close())
 
 async function syncedOnce() {
     const sandbox = await createSandbox()
@@ -72,8 +68,10 @@ test('TITLE_PREFIX replaces the default prefix', async () => {
     assert.equal(sandbox.targetLog('webitel/target', 'main~1..main', '%s'), 'ci(sync)[PE-117]: change a')
 })
 
-test('opens a pull request titled and described after the sync commit', async () => {
+test('opens a pull request titled and described after the sync commit', async (t) => {
     const { sandbox } = await syncedOnce()
+    const api = await sandbox.startApi()
+    t.after(() => api.close())
     await sandbox.commitSource('feat(golang)[PE-117]: change a', { 'golang/a.yml': '2\n' })
     await sandbox.commitSource('fix(golang)[PE-118]: change b', { 'golang/b.yml': '2\n' })
 
@@ -91,8 +89,10 @@ test('opens a pull request titled and described after the sync commit', async ()
     assert.deepEqual(pr.labels.map((l) => l.name), [ 'sync' ])
 })
 
-test('dry run prints the commit message and pushes nothing', async () => {
+test('dry run prints the commit message and pushes nothing', async (t) => {
     const { sandbox } = await syncedOnce()
+    const api = await sandbox.startApi()
+    t.after(() => api.close())
     await sandbox.commitSource('feat(golang)[PE-117]: change a', { 'golang/a.yml': '2\n' })
 
     const result = await sandbox.runAction({ api, inputs: { DRY_RUN: true } })
