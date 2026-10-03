@@ -90,7 +90,7 @@ jobs:
     runs-on: [ arc-c-runner-set ]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 

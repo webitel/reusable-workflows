@@ -139,7 +139,7 @@ export class ConfigGenerator {
 
             return scripts;
         } catch (error) {
-            throw new Error(`Failed to parse scripts: ${(error as Error).message}`);
+            throw new Error(`Failed to parse scripts: ${(error as Error).message}`, { cause: error });
         }
     }
 }
@@ -238,7 +238,7 @@ export class FileValidator {
                 await fs.access(file.src);
                 core.info(`✅ Found: ${file.src}`);
             } catch (error) {
-                throw new Error(`Source file not found: ${file.src}`);
+                throw new Error(`Source file not found: ${file.src}`, { cause: error });
             }
         }
     }

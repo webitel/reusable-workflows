@@ -33583,7 +33583,7 @@ class ConfigGenerator {
             return scripts;
         }
         catch (error) {
-            throw new Error(`Failed to parse scripts: ${error.message}`);
+            throw new Error(`Failed to parse scripts: ${error.message}`, { cause: error });
         }
     }
 }
@@ -33671,7 +33671,7 @@ class FileValidator {
                 info(`✅ Found: ${file.src}`);
             }
             catch (error) {
-                throw new Error(`Source file not found: ${file.src}`);
+                throw new Error(`Source file not found: ${file.src}`, { cause: error });
             }
         }
     }
@@ -37003,7 +37003,7 @@ class NFPMInstaller {
             info('✅ nFPM is available and ready');
         }
         catch (error) {
-            throw new Error('nFPM is not available. Please install nFPM or provide a version to install.');
+            throw new Error('nFPM is not available. Please install nFPM or provide a version to install.', { cause: error });
         }
     }
     static async resolveVersion(version) {
