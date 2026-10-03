@@ -12,10 +12,25 @@ updates:
     commit-message:
       prefix: fix(deps)
       prefix-development: chore(deps)
+    ignore:
+      # js-yaml 5 is a rewrite with different load/dump defaults; 4.x still
+      # receives security backports.
+      - dependency-name: js-yaml
+        update-types: [version-update:semver-major]
+      # Types track the node24 action runtime, not the latest Node release.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
     groups:
       npm-security:
         applies-to: security-updates
         patterns: ["*"]
+      # Packages that must move together (plugins pin their core as a peer).
+      eslint:
+        applies-to: version-updates
+        patterns: ["eslint", "@eslint/*", "typescript-eslint"]
+      vitest:
+        applies-to: version-updates
+        patterns: ["vitest", "@vitest/*"]
       npm-minor-patch:
         applies-to: version-updates
         update-types: [minor, patch]
