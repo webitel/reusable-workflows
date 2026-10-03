@@ -157,6 +157,10 @@ outputs:
   pull_request_urls:
     description: The URLs to the created Pull Requests as an array
 
+  results:
+    description: |
+      JSON array with one entry per target repository: repository, status (created, updated, unchanged, up-to-date, closed, skipped, pushed, dry-run or failed), pullRequest (URL), drift (number of overwritten local changes) and error
+
 runs:
   using: node24
   main: dist/index.js

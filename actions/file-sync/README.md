@@ -162,7 +162,12 @@ Here are all the inputs [file-sync](https://github.com/webitel/reusable-workflow
 
 ### Outputs
 
-The action sets the `pull_request_urls` output to the URLs of any created Pull Requests. It will be an array of URLs to each PR, e.g. `'["https://github.com/username/repository/pull/number", "..."]'`.
+The action sets two outputs:
+
+- `pull_request_urls` — URLs of the pull requests created or updated by this run, e.g. `'["https://github.com/username/repository/pull/number", "..."]'`.
+- `results` — one entry per target repository, e.g. `[{"repository":"webitel/cases","status":"updated","pullRequest":"https://github.com/webitel/cases/pull/12","drift":0}]`. `status` is one of `created`, `updated`, `unchanged`, `up-to-date`, `closed`, `skipped`, `pushed`, `dry-run`, `failed` (with `error`).
+
+The same results are written as a table to the job summary.
 
 ## 🛠️ Sync Configuration
 

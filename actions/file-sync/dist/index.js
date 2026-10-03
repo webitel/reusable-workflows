@@ -3,7 +3,7 @@ import os__default, { EOL } from 'os';
 import * as crypto from 'crypto';
 import { createHash } from 'crypto';
 import * as fs$2 from 'fs';
-import fs__default, { promises, existsSync, readFileSync } from 'fs';
+import fs__default, { promises, constants as constants$5, existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import path__default from 'path';
 import http from 'http';
@@ -28542,7 +28542,7 @@ var MediaTypes;
     });
 };
 
-(undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
+var __awaiter$1 = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
         function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
@@ -28552,6 +28552,268 @@ var MediaTypes;
     });
 };
 const { access, appendFile, writeFile } = promises;
+const SUMMARY_ENV_VAR = 'GITHUB_STEP_SUMMARY';
+class Summary {
+    constructor() {
+        this._buffer = '';
+    }
+    /**
+     * Finds the summary file path from the environment, rejects if env var is not found or file does not exist
+     * Also checks r/w permissions.
+     *
+     * @returns step summary file path
+     */
+    filePath() {
+        return __awaiter$1(this, void 0, void 0, function* () {
+            if (this._filePath) {
+                return this._filePath;
+            }
+            const pathFromEnv = process.env[SUMMARY_ENV_VAR];
+            if (!pathFromEnv) {
+                throw new Error(`Unable to find environment variable for $${SUMMARY_ENV_VAR}. Check if your runtime environment supports job summaries.`);
+            }
+            try {
+                yield access(pathFromEnv, constants$5.R_OK | constants$5.W_OK);
+            }
+            catch (_a) {
+                throw new Error(`Unable to access summary file: '${pathFromEnv}'. Check if the file has correct read/write permissions.`);
+            }
+            this._filePath = pathFromEnv;
+            return this._filePath;
+        });
+    }
+    /**
+     * Wraps content in an HTML tag, adding any HTML attributes
+     *
+     * @param {string} tag HTML tag to wrap
+     * @param {string | null} content content within the tag
+     * @param {[attribute: string]: string} attrs key-value list of HTML attributes to add
+     *
+     * @returns {string} content wrapped in HTML element
+     */
+    wrap(tag, content, attrs = {}) {
+        const htmlAttrs = Object.entries(attrs)
+            .map(([key, value]) => ` ${key}="${value}"`)
+            .join('');
+        if (!content) {
+            return `<${tag}${htmlAttrs}>`;
+        }
+        return `<${tag}${htmlAttrs}>${content}</${tag}>`;
+    }
+    /**
+     * Writes text in the buffer to the summary buffer file and empties buffer. Will append by default.
+     *
+     * @param {SummaryWriteOptions} [options] (optional) options for write operation
+     *
+     * @returns {Promise<Summary>} summary instance
+     */
+    write(options) {
+        return __awaiter$1(this, void 0, void 0, function* () {
+            const overwrite = !!(options === null || options === void 0 ? void 0 : options.overwrite);
+            const filePath = yield this.filePath();
+            const writeFunc = overwrite ? writeFile : appendFile;
+            yield writeFunc(filePath, this._buffer, { encoding: 'utf8' });
+            return this.emptyBuffer();
+        });
+    }
+    /**
+     * Clears the summary buffer and wipes the summary file
+     *
+     * @returns {Summary} summary instance
+     */
+    clear() {
+        return __awaiter$1(this, void 0, void 0, function* () {
+            return this.emptyBuffer().write({ overwrite: true });
+        });
+    }
+    /**
+     * Returns the current summary buffer as a string
+     *
+     * @returns {string} string of summary buffer
+     */
+    stringify() {
+        return this._buffer;
+    }
+    /**
+     * If the summary buffer is empty
+     *
+     * @returns {boolen} true if the buffer is empty
+     */
+    isEmptyBuffer() {
+        return this._buffer.length === 0;
+    }
+    /**
+     * Resets the summary buffer without writing to summary file
+     *
+     * @returns {Summary} summary instance
+     */
+    emptyBuffer() {
+        this._buffer = '';
+        return this;
+    }
+    /**
+     * Adds raw text to the summary buffer
+     *
+     * @param {string} text content to add
+     * @param {boolean} [addEOL=false] (optional) append an EOL to the raw text (default: false)
+     *
+     * @returns {Summary} summary instance
+     */
+    addRaw(text, addEOL = false) {
+        this._buffer += text;
+        return addEOL ? this.addEOL() : this;
+    }
+    /**
+     * Adds the operating system-specific end-of-line marker to the buffer
+     *
+     * @returns {Summary} summary instance
+     */
+    addEOL() {
+        return this.addRaw(EOL);
+    }
+    /**
+     * Adds an HTML codeblock to the summary buffer
+     *
+     * @param {string} code content to render within fenced code block
+     * @param {string} lang (optional) language to syntax highlight code
+     *
+     * @returns {Summary} summary instance
+     */
+    addCodeBlock(code, lang) {
+        const attrs = Object.assign({}, (lang && { lang }));
+        const element = this.wrap('pre', this.wrap('code', code), attrs);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML list to the summary buffer
+     *
+     * @param {string[]} items list of items to render
+     * @param {boolean} [ordered=false] (optional) if the rendered list should be ordered or not (default: false)
+     *
+     * @returns {Summary} summary instance
+     */
+    addList(items, ordered = false) {
+        const tag = ordered ? 'ol' : 'ul';
+        const listItems = items.map(item => this.wrap('li', item)).join('');
+        const element = this.wrap(tag, listItems);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML table to the summary buffer
+     *
+     * @param {SummaryTableCell[]} rows table rows
+     *
+     * @returns {Summary} summary instance
+     */
+    addTable(rows) {
+        const tableBody = rows
+            .map(row => {
+            const cells = row
+                .map(cell => {
+                if (typeof cell === 'string') {
+                    return this.wrap('td', cell);
+                }
+                const { header, data, colspan, rowspan } = cell;
+                const tag = header ? 'th' : 'td';
+                const attrs = Object.assign(Object.assign({}, (colspan && { colspan })), (rowspan && { rowspan }));
+                return this.wrap(tag, data, attrs);
+            })
+                .join('');
+            return this.wrap('tr', cells);
+        })
+            .join('');
+        const element = this.wrap('table', tableBody);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds a collapsable HTML details element to the summary buffer
+     *
+     * @param {string} label text for the closed state
+     * @param {string} content collapsable content
+     *
+     * @returns {Summary} summary instance
+     */
+    addDetails(label, content) {
+        const element = this.wrap('details', this.wrap('summary', label) + content);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML image tag to the summary buffer
+     *
+     * @param {string} src path to the image you to embed
+     * @param {string} alt text description of the image
+     * @param {SummaryImageOptions} options (optional) addition image attributes
+     *
+     * @returns {Summary} summary instance
+     */
+    addImage(src, alt, options) {
+        const { width, height } = options || {};
+        const attrs = Object.assign(Object.assign({}, (width && { width })), (height && { height }));
+        const element = this.wrap('img', null, Object.assign({ src, alt }, attrs));
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML section heading element
+     *
+     * @param {string} text heading text
+     * @param {number | string} [level=1] (optional) the heading level, default: 1
+     *
+     * @returns {Summary} summary instance
+     */
+    addHeading(text, level) {
+        const tag = `h${level}`;
+        const allowedTag = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)
+            ? tag
+            : 'h1';
+        const element = this.wrap(allowedTag, text);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML thematic break (<hr>) to the summary buffer
+     *
+     * @returns {Summary} summary instance
+     */
+    addSeparator() {
+        const element = this.wrap('hr', null);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML line break (<br>) to the summary buffer
+     *
+     * @returns {Summary} summary instance
+     */
+    addBreak() {
+        const element = this.wrap('br', null);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML blockquote to the summary buffer
+     *
+     * @param {string} text quote text
+     * @param {string} cite (optional) citation url
+     *
+     * @returns {Summary} summary instance
+     */
+    addQuote(text, cite) {
+        const attrs = Object.assign({}, (cite && { cite }));
+        const element = this.wrap('blockquote', text, attrs);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML anchor tag to the summary buffer
+     *
+     * @param {string} text link text/content
+     * @param {string} href hyperlink
+     *
+     * @returns {Summary} summary instance
+     */
+    addLink(text, href) {
+        const element = this.wrap('a', text, { href });
+        return this.addRaw(element).addEOL();
+    }
+}
+const _summary = new Summary();
+const summary = _summary;
 
 (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
@@ -49648,7 +49910,7 @@ function foreignCommitsComment({ runUrl }, commits) {
 
 const {
   CONFIG_PATH,
-  SYNC_NAME,
+  SYNC_NAME: SYNC_NAME$1,
   TITLE_PREFIX,
   GITHUB_REPOSITORY,
   GITHUB_SERVER_URL,
@@ -49771,7 +50033,7 @@ async function syncRepository(git, item) {
       if (await guardForeignCommits(git, existingPr)) return { status: "skipped", pullRequest: existingPr };
     }
   }
-  const manifestFile = manifestPath(SYNC_NAME);
+  const manifestFile = manifestPath(SYNC_NAME$1);
   const previousManifest = await readManifest(path.join(git.workingDir, manifestFile));
   const drift = previousManifest ? await findDrift(git.workingDir, previousManifest) : [];
   const repoName = `${item.repo.user}/${item.repo.name}`;
@@ -49785,24 +50047,24 @@ async function syncRepository(git, item) {
   const { managed, retained } = await syncFiles(git, item.files);
   const manifestFiles = await manifestEntries(git, managed);
   if (DELETE_REMOVED) await deleteRemoved(git, previousManifest, manifestFiles, retained);
-  for (const conflict of await findOwnershipConflicts(git.workingDir, SYNC_NAME, Object.keys(manifestFiles))) {
+  for (const conflict of await findOwnershipConflicts(git.workingDir, SYNC_NAME$1, Object.keys(manifestFiles))) {
     warning(`${conflict.dest} is also managed by the "${conflict.stream}" sync stream`);
   }
   const fileChanges = (await git.changedFiles()).filter(({ file }) => file !== manifestFile);
   if (fileChanges.length === 0 && previousManifest !== void 0 && sameFiles(previousManifest.files, manifestFiles)) {
     info("File(s) already up to date");
-    if (!existingPr) return { status: "up-to-date" };
+    if (!existingPr) return { status: "up-to-date", drift: drift.length };
     info(`Closing PR #${existingPr.number}: nothing left to sync`);
     if (DRY_RUN === false) {
       const history2 = { to: await git.sourceSha()};
       await git.commentPr(closedComment({ serverUrl: GITHUB_SERVER_URL, repository: GITHUB_REPOSITORY, runUrl: runUrl(), history: history2 }));
       await git.closePr();
     }
-    return { status: "closed", pullRequest: existingPr };
+    return { status: "closed", pullRequest: existingPr, drift: drift.length };
   }
   await fs$2.promises.mkdir(path.dirname(path.join(git.workingDir, manifestFile)), { recursive: true });
   await fs$2.promises.writeFile(path.join(git.workingDir, manifestFile), serializeManifest({
-    name: SYNC_NAME,
+    name: SYNC_NAME$1,
     repository: GITHUB_REPOSITORY,
     config: path.normalize(CONFIG_PATH),
     sha: await git.sourceSha(),
@@ -49829,14 +50091,14 @@ async function syncRepository(git, item) {
     runUrl: runUrl(),
     history,
     files,
-    stream: SYNC_NAME,
+    stream: SYNC_NAME$1,
     drift,
     extra: PR_BODY
   };
   const message = commitMessage(context);
   if (existingPr && await openPrMatches(git, { files, manifestFile, manifestFiles, previousManifest })) {
     info(`PR #${existingPr.number} already contains these changes`);
-    return { status: "unchanged", pullRequest: existingPr };
+    return { status: "unchanged", pullRequest: existingPr, drift: drift.length };
   }
   if (DRY_RUN) {
     warning("Dry run, no changes will be pushed");
@@ -49844,21 +50106,50 @@ async function syncRepository(git, item) {
 ${message}`);
     if (SKIP_PR === false) info(`Pull request body:
 ${pullRequestBody(context)}`);
-    return { status: "dry-run" };
+    return { status: "dry-run", drift: drift.length };
   }
   await git.commit(message);
   info(`Pushing changes to target repository`);
   await git.push();
-  if (SKIP_PR) return { status: "pushed" };
+  if (SKIP_PR) return { status: "pushed", drift: drift.length };
   const previousState = parseState(existingPr?.body);
   const pullRequest = await git.createOrUpdatePr(syncSubject(context), pullRequestBody(context));
   notice(`Pull Request #${pullRequest.number} created/updated: ${pullRequest.html_url}`);
   if (existingPr) await git.commentPr(journalComment(context, previousState));
   await decoratePullRequest(git);
-  return { status: existingPr ? "updated" : "created", pullRequest };
+  return { status: existingPr ? "updated" : "created", pullRequest, drift: drift.length };
+}
+
+const LABELS = {
+  "created": "\u{1F195} created",
+  "updated": "\u{1F504} updated",
+  "unchanged": "\u23F8\uFE0F unchanged",
+  "up-to-date": "\u2705 up to date",
+  "closed": "\u2716\uFE0F closed",
+  "skipped": "\u26A0\uFE0F skipped",
+  "pushed": "\u2B06\uFE0F pushed",
+  "dry-run": "\u{1F9EA} dry run",
+  "failed": "\u274C failed"
+};
+const cell = (text) => String(text).replace(/\|/g, "\\|").replace(/\n/g, " ");
+function summaryMarkdown(stream, results) {
+  const rows = results.map((r) => {
+    const result = r.error ? `${LABELS[r.status]}: ${cell(r.error)}` : LABELS[r.status] || r.status;
+    const pr = r.pullRequest ? `[#${r.pullRequest.split("/").pop()}](${r.pullRequest})` : "";
+    return `| ${r.repository} | ${result} | ${pr} | ${r.drift || ""} |`;
+  });
+  return [
+    `### file-sync: ${stream}`,
+    "",
+    "| Repository | Result | Pull request | Drift |",
+    "|---|---|---|---|",
+    ...rows,
+    ""
+  ].join("\n");
 }
 
 const {
+  SYNC_NAME,
   TMP_DIR,
   SKIP_CLEANUP,
   NUNJUCKS_BLOCK_START,
@@ -49883,6 +50174,7 @@ async function run() {
   const git = new Git();
   const repos = await parseConfig();
   const prUrls = [];
+  const results = [];
   await forEach(repos, async (item) => {
     info(`Repository Info`);
     info(`Slug		: ${item.repo.name}`);
@@ -49890,15 +50182,22 @@ async function run() {
     info(`Https Url	: https://${item.repo.fullName}`);
     info(`Branch		: ${item.repo.branch}`);
     info("	");
+    const repository = `${item.repo.user}/${item.repo.name}${item.repo.branch === "default" ? "" : `@${item.repo.branch}`}`;
     try {
       const result = await syncRepository(git, item);
-      if (result.pullRequest) prUrls.push(result.pullRequest.html_url);
+      if (["created", "updated"].includes(result.status)) prUrls.push(result.pullRequest.html_url);
+      results.push({ repository, status: result.status, pullRequest: result.pullRequest?.html_url, drift: result.drift || 0 });
       info("	");
     } catch (err) {
+      results.push({ repository, status: "failed", error: err.message, drift: 0 });
       setFailed(err.message);
       debug(err);
     }
   });
+  setOutput("results", results);
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    await summary.addRaw(summaryMarkdown(SYNC_NAME, results), true).write();
+  }
   if (prUrls) {
     setOutput("pull_request_urls", prUrls);
   }

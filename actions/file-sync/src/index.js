@@ -3,10 +3,12 @@ import * as core from '@actions/core'
 import Git from './git.js'
 import { forEach, remove, setNunjucksTags } from './helpers.js'
 import { syncRepository } from './sync.js'
+import { summaryMarkdown } from './summary.js'
 
 import { parseConfig, default as config } from './config.js'
 
 const {
+    SYNC_NAME,
     TMP_DIR,
     SKIP_CLEANUP,
     NUNJUCKS_BLOCK_START,
@@ -36,6 +38,7 @@ async function run() {
     const repos = await parseConfig()
 
     const prUrls = []
+    const results = []
 
     await forEach(repos, async (item) => {
         core.info(`Repository Info`)
@@ -44,16 +47,24 @@ async function run() {
         core.info(`Https Url	: https://${ item.repo.fullName }`)
         core.info(`Branch		: ${ item.repo.branch }`)
         core.info('	')
+        const repository = `${ item.repo.user }/${ item.repo.name }${ item.repo.branch === 'default' ? '' : `@${ item.repo.branch }` }`
         try {
             const result = await syncRepository(git, item)
-            if (result.pullRequest) prUrls.push(result.pullRequest.html_url)
+            if ([ 'created', 'updated' ].includes(result.status)) prUrls.push(result.pullRequest.html_url)
+            results.push({ repository, status: result.status, pullRequest: result.pullRequest?.html_url, drift: result.drift || 0 })
 
             core.info('	')
         } catch (err) {
+            results.push({ repository, status: 'failed', error: err.message, drift: 0 })
             core.setFailed(err.message)
             core.debug(err)
         }
     })
+
+    core.setOutput('results', results)
+    if (process.env.GITHUB_STEP_SUMMARY) {
+        await core.summary.addRaw(summaryMarkdown(SYNC_NAME, results), true).write()
+    }
 
     // If we created any PRs, set their URLs as the output
     if (prUrls) {
