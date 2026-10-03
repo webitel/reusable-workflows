@@ -129,7 +129,7 @@ jobs:
           repositories: ${{ inputs.artifact-repository }}
 
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ inputs.artifact-repository != '' && format('{0}/{1}', inputs.artifact-repository-owner, inputs.artifact-repository) || github.repository }}
           token: ${{ steps.app-token.outputs.token || github.token }}

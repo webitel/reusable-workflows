@@ -49,7 +49,7 @@ jobs:
 
     steps:
       - name: Build keep-set
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -110,7 +110,7 @@ jobs:
             fs.writeFileSync(process.env.PLAN_FILE, JSON.stringify(plan));
 
       - name: Find candidates
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -154,7 +154,7 @@ jobs:
             fs.writeFileSync(process.env.PLAN_FILE, JSON.stringify(plan));
 
       - name: Delete artifacts
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -183,7 +183,7 @@ jobs:
 
       - name: Render summary
         if: always()
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');

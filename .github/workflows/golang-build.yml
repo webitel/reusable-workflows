@@ -122,12 +122,12 @@ jobs:
     runs-on: [ arc-backend-runner-set ]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
       - name: Checkout shared-actions (for matcher)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: webitel/reusable-workflows
           path: .shared-actions
