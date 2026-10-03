@@ -108,6 +108,14 @@ on:
         default: false
         description: Download generated code
 
+      cgo-enabled:
+        type: boolean
+        required: false
+        default: false
+        description: |
+          Build with cgo. The runner image ships gcc, the arm64 cross toolchain and the C libraries (e.g., libsystemd-dev).
+          Set explicitly either way: Go would enable cgo on its own once gcc is on PATH.
+
 jobs:
   compile:
     name: Application
@@ -135,11 +143,21 @@ jobs:
         with:
           name: generated-code
 
+      - name: Configure cgo cross toolchain
+        if: inputs.cgo-enabled && inputs.arch == 'arm64'
+        run: |
+          # restrict pkg-config to the target libraries, so a cross build never picks up host .pc files
+          {
+            echo "CC=aarch64-linux-gnu-gcc"
+            echo "PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
+          } >> "$GITHUB_ENV"
+
       - name: Build
         run: go build ${{ inputs.build-args }} -ldflags="${{ inputs.ldflags }}" -o "${{ inputs.binary-name }}" ${{ inputs.main-path }}
         env:
           GOOS: linux
           GOARCH: ${{ inputs.arch }}
+          CGO_ENABLED: ${{ inputs.cgo-enabled && '1' || '0' }}
 
       - name: Parse package contents for upload
         id: parse-upload-pattern
