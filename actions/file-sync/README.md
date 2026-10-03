@@ -8,17 +8,27 @@ Keep files like Action workflows or entire directories in sync between multiple 
 
 ## 👋 Introduction
 
-With [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) you can sync files, like workflow `.yml` files, configuration files or whole directories between repositories or branches. It works by running a GitHub Action in your main repository everytime you push something to that repo. The action will use a `sync.yml` config file to figure out which files it should sync where. If it finds a file which is out of sync it will open a pull request in the target repository with the changes.
+With [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) you can sync files, like workflow `.yml` files, configuration files or whole directories between repositories or branches. It works by running a GitHub Action in your main repository everytime you push something to that repo. The action will use a `sync.yml` config file to figure out which files it should sync where. If it finds a file which is out of sync it will open a pull request in the target repository with the changes.
 
 ## 🚀 Features
 
-- Keep GitHub Actions workflow files in sync across all your repositories
-- Sync any file or a whole directory to as many repositories as you want
-- Easy configuration for any use case
-- Create a pull request in the target repo so you have the last say on what gets merged
-- Automatically label pull requests to integrate with other actions like [automerge-action](https://github.com/pascalgn/automerge-action)
-- Assign users to the pull request
-- Render [Jinja](https://jinja.palletsprojects.com/)-style templates as use variables thanks to [Nunjucks](https://mozilla.github.io/nunjucks/)
+- Keep workflows, configs or whole directories in sync across many repositories from one config: shared files plus per-repository template variables
+- One pull request per target repository, titled after the source commits and their Jira keys, kept up to date until merged
+- A manifest of managed files in every target: drift detection and removal of files dropped from the config
+- Optional "DO NOT EDIT" headers in synced files, a job summary and a pinned status issue
+- Render [Jinja](https://jinja.palletsprojects.com/)-style templates with [Nunjucks](https://mozilla.github.io/nunjucks/)
+- Label, assign and request reviews on pull requests
+
+## ⬆️ Upgrading from v2
+
+v3 changes how sync commits and pull requests look and adds a manifest to every target repository:
+
+- **Removed inputs**: `COMMIT_EACH_FILE`, `ORIGINAL_MESSAGE`, `COMMIT_AS_PR_TITLE`, `COMMIT_PREFIX`, `COMMIT_BODY`. Each sync is one commit whose subject is built from the source commits; use `TITLE_PREFIX` to change its prefix.
+- **New inputs**: `TITLE_PREFIX`, `SYNC_NAME`, `FILE_HEADER`, `ON_DRIFT`, `DELETE_REMOVED`, `STATUS_ISSUE`.
+- **New config format**: `defaults` + `files` + `repos` (see [Sync Configuration](#%EF%B8%8F-sync-configuration)) replaces per-repository file lists, `group` and `definitions`. Configs in the v2 format are rejected.
+- **Check out the source with `fetch-depth: 0`**, otherwise source commits cannot be listed.
+- **First run**: every target repository gets one pull request that adds `.github/file-sync/<SYNC_NAME>.yml` (and the headers, with `FILE_HEADER: true`). Merge these before relying on the source commit ranges in later pull requests.
+- An open v2 sync pull request is updated in place; its commits are recognized as file-sync's own.
 
 ## 📚 Usage
 
@@ -43,10 +53,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@main
-      
+        uses: actions/checkout@v6
+        with:
+          # Full history lets the action list the source commits each sync brings
+          fetch-depth: 0
+
       - name: Run GitHub File Sync
-        uses: webitel/reusable-workflows/actions/file-sync-action@v1
+        uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
         with:
           GH_PAT: ${{ secrets.GH_PAT }}
 ```
@@ -66,81 +79,43 @@ If using an installation token you are required to provide the `GIT_EMAIL` and `
 
 ### Sync configuration
 
-The last step is to create a `.yml` file in the `.github` folder of your repository and specify what file(s) to sync to which repositories:
+The last step is to create a `.yml` file in the `.github` folder of your repository that lists the files and the repositories to sync them to:
 
 **.github/sync.yml**
 
 ```yml
-user/repository:
-  - .github/workflows/test.yml
-  - .github/workflows/lint.yml
+files:
+  - source: workflows/lint.yml
+    dest: .github/workflows/lint.yml
 
-user/repository2:
-  - source: workflows/stale.yml
-    dest: .github/workflows/stale.yml
+repos:
+  user/repository:
+  user/repository2:
 ```
 
-More info on how to specify what files to sync where [below](#%EF%B8%8F-sync-configuration).
-
-### YAML anchors via `definitions` (advanced)
-
-If you want to avoid repeating the same file lists, you can use YAML anchors and aliases. You can declare your anchors under a top-level `definitions` key. The action will ignore the `definitions` key when parsing, so it won’t be treated as a repo name or a group.
-
-Example (anchors used with direct repo entries):
-
-```yml
-# .github/sync.yml
-
-definitions:
-  common_files: &common_files
-    - .github/workflows/test.yml
-    - source: workflows/stale.yml
-      dest: .github/workflows/stale.yml
-
-user/repository: *common_files
-user/repository2: *common_files
-```
-
-Example (anchors used with groups):
-
-```yml
-# .github/sync.yml
-
-definitions:
-  group_files: &group_files
-    - .github/workflows/lint.yml
-    - source: workflows/stale.yml
-      dest: .github/workflows/stale.yml
-
-group:
-  - repos: |
-      user/repo1
-      user/repo2
-    files: *group_files
-```
-
-This feature relies on standard YAML anchor/alias behavior and is supported by the configuration parser. Use it to keep your sync configuration DRY while retaining full readability.
+More info on the format [below](#%EF%B8%8F-sync-configuration).
 
 ## ⚙️ Action Inputs
 
-Here are all the inputs [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) takes:
+Here are all the inputs [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) takes:
 
 | Key                       | Value                                                                                                                                          | Required                                         | Default                        |
 |---------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|--------------------------------|
 | `GH_PAT`                  | Your [Personal Access token](https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/creating-a-personal-access-token) | **`GH_PAT` or `GH_INSTALLATION_TOKEN` required** | N/A                            |
 | `GH_INSTALLATION_TOKEN`   | Token from a GitHub App installation                                                                                                           | **`GH_PAT` or `GH_INSTALLATION_TOKEN` required** | N/A                            |
 | `CONFIG_PATH`             | Path to the sync configuration file                                                                                                            | **No**                                           | .github/sync.yml               |
+| `SYNC_NAME`               | Name of the sync stream; the manifest is written to `.github/file-sync/<SYNC_NAME>.yml` in target repositories                                | **No**                                           | `CONFIG_PATH` without `.github/` and extension, `/` → `-` |
+| `ON_DRIFT`                | `warn`: overwrite synced files edited in the target and list them in the PR; `fail`: skip such a repository and fail the run                  | **No**                                           | warn                           |
+| `DELETE_REMOVED`          | Delete managed files that the sync config no longer produces (kept when the entry switched to `replace: false` or its source is missing)         | **No**                                           | true                           |
+| `STATUS_ISSUE`            | Title of a status issue in the source repository where every stream keeps a comment with its latest results                                  | **No**                                           | N/A                            |
+| `FILE_HEADER`             | Put a "Code generated by file-sync … DO NOT EDIT." header with the source path on top of synced files                                        | **No**                                           | false                          |
 | `IS_FINE_GRAINED`         | Labels the GH_PAT as a fine grained token                                                                                                      | **No**                                           | false                          |
 | `PR_LABELS`               | Labels which will be added to the pull request. Set to false to turn off                                                                       | **No**                                           | sync                           |
 | `ASSIGNEES`               | Users to assign to the pull request                                                                                                            | **No**                                           | N/A                            |
 | `REVIEWERS`               | Users to request a review of the pull request from                                                                                             | **No**                                           | N/A                            |
 | `TEAM_REVIEWERS`          | Teams to request a review of the pull request from                                                                                             | **No**                                           | N/A                            |
-| `COMMIT_PREFIX`           | Prefix for commit message and pull request title                                                                                               | **No**                                           | 🔄                             |
-| `COMMIT_BODY`             | Commit message body. Will be appended to commit message, separated by two line returns.                                                        | **No**                                           | ''                             |
+| `TITLE_PREFIX`            | Prefix of the sync commit subject and PR title, followed by the Jira keys of the source commits; set to an empty string to disable          | **No**                                           | chore(sync)                    |
 | `PR_BODY`                 | Additional content to add in the PR description.                                                                                               | **No**                                           | ''                             |
-| `ORIGINAL_MESSAGE`        | Use original commit message instead. Only works if the file(s) were changed and the action was triggered by pushing a single commit.           | **No**                                           | false                          |
-| `COMMIT_AS_PR_TITLE`      | Use first line of the commit message as PR title. Only works if `ORIGINAL_MESSAGE` is `true` and working.                                      | **No**                                           | false                          |
-| `COMMIT_EACH_FILE`        | Commit each file seperately                                                                                                                    | **No**                                           | true                           |
 | `GIT_EMAIL`               | The e-mail address used to commit the synced files                                                                                             | **Only when using installation token**           | the email of the PAT used      |
 | `GIT_USERNAME`            | The username used to commit the synced files                                                                                                   | **Only when using installation token**           | the username of the PAT used   |
 | `OVERWRITE_EXISTING_PR`   | Overwrite any existing Sync PR with the new changes                                                                                            | **No**                                           | true                           |
@@ -159,92 +134,106 @@ Here are all the inputs [file-sync-action](https://github.com/webitel/reusable-w
 
 ### Outputs
 
-The action sets the `pull_request_urls` output to the URLs of any created Pull Requests. It will be an array of URLs to each PR, e.g. `'["https://github.com/username/repository/pull/number", "..."]'`.
+The action sets two outputs:
+
+- `pull_request_urls` — URLs of the pull requests created or updated by this run, e.g. `'["https://github.com/username/repository/pull/number", "..."]'`.
+- `results` — one entry per target repository, e.g. `[{"repository":"webitel/cases","status":"updated","pullRequest":"https://github.com/webitel/cases/pull/12","drift":0}]`. `status` is one of `created`, `updated`, `unchanged`, `up-to-date`, `closed`, `skipped`, `pushed`, `dry-run`, `failed` (with `error`).
+
+The same results are written as a table to the job summary.
 
 ## 🛠️ Sync Configuration
 
-To tell [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) what files to sync where, you have to create a `sync.yml` file in the `.github` directory of your main repository (see [action-inputs](#%EF%B8%8F-action-inputs) on how to change the location).
-
-The top-level key should be used to specify the target repository in the format `username`/`repository-name`@`branch`, after that you can list all the files you want to sync to that individual repository:
+The sync config (`.github/sync.yml` by default, see `CONFIG_PATH`) describes a set of repositories that share the same files, with per-repository values for templates:
 
 ```yml
-user/repo:
-  - path/to/file.txt
-user/repo2@develop:
-  - path/to/file2.txt
+# Template variables shared by every repository
+defaults:
+  version: v2
+  branch: main
+
+# Synced to every repository below
+files:
+  - source: golang/workflows/workflow.yml.njk   # .njk files are rendered with the repository's variables
+    dest: .github/workflows/workflow.yml
+
+  - source: golang/configs/.gitignore           # other files are copied as they are
+    dest: .gitignore
+
+  - source: common/deploy/debian/
+    dest: deploy/debian/
+    when: deb                                   # only repositories with a truthy `deb`
+
+  - source: golang/.idea
+    dest: .idea
+    header: false
+
+# owner/name[@branch]: the repository's template variables, deep-merged over defaults
+repos:
+  webitel/cases:
+    name: webitel-cases
+    deb: true
+    build:
+      binary-name: webitel-cases
+
+  webitel/chat-migration-cli:
+    name: chat-migration-cli
+    versioning: semver
 ```
 
-There are multiple ways to specify which files to sync to each individual repository.
+- Adding a repository means adding one entry under `repos` (the value may be empty).
+- Only `defaults`, `files` and `repos` are allowed at the top level, so a typo fails the run instead of silently syncing nothing.
+- The list of repositories is easy to read from the config, e.g. to scope a GitHub App token: `yq -r '.repos | keys | .[] | sub("^[^/]+/"; "") | sub("@.*$"; "")' .github/sync.yml`.
 
-### List individual file(s)
+### Repositories
 
-The easiest way to sync files is the list them on a new line for each repository:
+- `owner/name` syncs to the default branch, `owner/name@branch` to another branch (the same repository can be listed with several branches).
+- A key starting with `https://` targets another host, e.g. a GitHub Enterprise Server: `https://custom.host/owner/name`.
+- The value holds the repository's template variables. They are deep-merged over `defaults`: objects are merged key by key, everything else is replaced.
+
+### File entries
+
+Each entry of `files` is a path (`- LICENSE`, synced to the same path) or an object:
+
+| Key | Description | Default |
+|---|---|---|
+| `source` | File or directory in the source repository. A directory syncs everything below it | — |
+| `dest` | Path in the target repository | `source` |
+| `when` | Sync only to repositories whose variable is truthy: `deb`, negated `!deb`, a path `build.arm`, or a list that must all hold `[ freeswitch, public ]` | every repository |
+| `template` | Render with [Nunjucks](https://mozilla.github.io/nunjucks/): `true`, or an object of extra variables merged over the repository's. Files ending with `.njk` are rendered by default; `false` copies them as they are | `.njk` files only |
+| `replace` | `false` creates the file only when it does not exist yet; the target repository owns it afterwards | `true` |
+| `exclude` | Paths below a directory `source` to skip, one per line, relative to `source`; an entry ending with `/` skips a whole folder | — |
+| `deleteOrphaned` | For a directory: delete files in `dest` that do not exist in `source` | `false` |
+| `header` | `false` skips the [generated-file header](#generated-file-header) | `true` |
 
 ```yml
-user/repo:
-  - .github/workflows/build.yml
+files:
   - LICENSE
-  - .gitignore
-```
 
-### Different destination path/filename(s)
-
-Using the `dest` option you can specify a destination path in the target repo and/or change the filename for each source file:
-
-```yml
-user/repo:
-  - source: workflows/build.yml
-    dest: .github/workflows/build.yml
-  - source: LICENSE.md
-    dest: LICENSE
-```
-
-### Sync entire directories
-
-You can also specify entire directories to sync:
-
-```yml
-user/repo:
   - source: workflows/
     dest: .github/workflows/
-```
-
-### Exclude certain files when syncing directories
-
-Using the `exclude` key you can specify files you want to exclude when syncing entire directories (#26).
-
-```yml
-user/repo:
-  - source: workflows/
-    dest: .github/workflows/
+    deleteOrphaned: true
     exclude: |
       node.yml
-      lint.yml
+      experimental/
 ```
 
-> **Note:** the exclude file path is relative to the source path
+### Templates
 
-### Don't replace existing file(s)
-
-By default if a file already exists in the target repository, it will be replaced. You can change this behaviour by setting the `replace` option to `false`:
+Templates use [Jinja](https://jinja.palletsprojects.com/)-style syntax compiled by Nunjucks; see its [template syntax](https://mozilla.github.io/nunjucks/templating.html) for variables, filters, blocks and `extends` (with a path relative to the source repository). With the repository variables from the example above:
 
 ```yml
-user/repo:
-  - source: .github/workflows/lint.yml
-    replace: false
+# golang/workflows/workflow.yml.njk
+name: Workflow ( {{ name }} )
+uses: webitel/reusable-workflows/.github/workflows/golang-build.yml@{{ version }}
 ```
 
-### Using templates
-
-#### Custom Nunjucks delimiters (optional)
-If your source files contain characters that conflict with the default Nunjucks tags, you can customize the delimiter syntax via inputs. Set any of the following inputs in the workflow step that uses the action:
+If source files contain the default tags (`{% %}`, `{{ }}`, `{# #}`) — GitHub Actions expressions do — choose other delimiters with the `NUNJUCKS_*` inputs:
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
-    # Example: use ((* *)) for blocks, ((( ))) for variables, ((= =)) for comments
     NUNJUCKS_BLOCK_START: '((*'
     NUNJUCKS_BLOCK_END: '*))'
     NUNJUCKS_VARIABLE_START: '((('
@@ -253,162 +242,143 @@ If your source files contain characters that conflict with the default Nunjucks 
     NUNJUCKS_COMMENT_END: '=))'
 ```
 
-Defaults (when not provided) remain the standard Nunjucks tags: `{% %}` for blocks, `{{ }}` for variables, and `{# #}` for comments.
+Templates are rendered with autoescaping on: pass multi-line or quoted values through `| safe`.
 
-You can render templates before syncing by using the [Jinja](https://jinja.palletsprojects.com/)-style template syntax. It will be compiled using [Nunjucks](https://mozilla.github.io/nunjucks/) and the output written to the specific file(s) or folder(s).
+### Sync commits and pull requests
 
-Nunjucks supports variables and blocks among other things. To enable, set the `template` field to a context dictionary, or in case of no variables, `true`:
+Each sync produces one commit per target repository. Its subject names the source commits it brings, with their Jira keys (taken from bracketed lists such as `[PE-117]`):
 
-```yml
-user/repo:
-  - source: src/README.md
-    template:
-      user:
-        name: 'Webitel'
-        handle: '@webitel'
+| Source commits since the last sync | Subject |
+|---|---|
+| one | `chore(sync)[PE-117]: take version metadata from prepare outputs` (the source subject without its `type(scope)[keys]:` prefix) |
+| several | `chore(sync)[PE-117,PE-118]: 2 changes from webitel/reusable-configs` |
+| unknown (first sync, shallow checkout) | `chore(sync): sync files from webitel/reusable-configs@1a2b3c4` |
+
+```
+chore(sync)[PE-117,PE-118]: 2 changes from webitel/reusable-configs
+
+Source: webitel/reusable-configs 9f8e7d6..1a2b3c4 (golang/sync.yml)
+
+Changes:
+- feat(golang)[PE-117]: take version metadata from prepare outputs (56c90e3)
+- feat(golang)[PE-118]: sync workflows to chat-migration-cli (48bb00e)
+
+Files:
+- M .github/workflows/pull-request.yml <- golang/workflows/pull-request.yml.njk
+- A .github/workflows/release-branch.yml <- common/workflows/release-branch.yml
+
+Synced-From: webitel/reusable-configs@1a2b3c4d5e6f...
+Sync-Config: golang/sync.yml
+Sync-Run: https://github.com/webitel/reusable-configs/actions/runs/123
 ```
 
-In the source file you can then use these variables like this:
+The pull request uses the subject as its title; its body links the source commit range, each source commit and each source file. `TITLE_PREFIX` changes `chore(sync)`.
 
-```yml
-# README.md
+### Open sync pull requests
 
-Created by {{ user.name }} ({{ user.handle }})
+With `OVERWRITE_EXISTING_PR` (default) each target repository has at most one sync pull request. Every run rebuilds its branch from the current base branch, so syncs that were not merged yet accumulate into it: the commit and title always cover all source commits since the last merged sync.
+
+- **New changes**: the branch is force-pushed, the title and body are updated and a comment lists the source commits added since the previous update.
+- **Same content**: when the branch already has exactly the files the sync would produce, nothing is pushed or edited, so CI does not re-run and approvals stay.
+- **Nothing left to sync** (e.g. the source change was reverted): the pull request is closed with a comment and its branch is deleted.
+- **Commits pushed by people**: if the branch has commits file-sync did not create (no `Synced-From:` trailer, not authored by the pull request author or `GIT_EMAIL`), the repository is skipped with a warning and a one-time comment instead of dropping those commits.
+
+The pull request body ends with a hidden `<!-- file-sync:state … -->` marker that records the source commits it contains.
+
+### Status issue
+
+Set `STATUS_ISSUE` to a title (e.g. `File sync status`) to get one issue in the source repository that shows the state of every sync stream. The issue is found by a hidden marker, created and pinned on first use; each stream (`SYNC_NAME`) owns one comment in it and rewrites it on every run, so streams running at the same time never overwrite each other:
+
+```
+### golang-sync · `golang/sync.yml`
+Updated by run #123 at 2026-10-03 14:20 UTC from `1a2b3c4`.
+
+**Needs attention**
+- ⛔ webitel/cases: #83 has commits file-sync did not create
+- ⚠️ webitel/engine: 1 local change overwritten in #12
+- 🕒 webitel/logger: #84 open since 2026-09-20
+- ❌ webitel/storage: <error>
+
+| Repository     | Synced to            | Pull request       | Result        |
+|----------------|----------------------|--------------------|---------------|
+| webitel/cases  | `4341ec7` · 2026-10-01 | #83 · since 2026-09-30 | ⚠️ skipped |
+| webitel/fts    | `1a2b3c4` · 2026-10-03 |                    | ✅ up to date |
 ```
 
-Result:
+- "Synced to" is the source commit the target's base branch matches (from its manifest).
+- Sync pull requests open longer than 7 days are listed as needing attention.
+- The comment reflects the latest run, so schedule the sync workflow (e.g. daily) to keep it current after pull requests are merged; a run without changes pushes nothing.
+- The token needs `issues: write` on the source repository (for a GitHub App token: include the source repository and grant the Issues permission). Pinning may need more rights; a warning asks to pin it manually otherwise.
+- Updating the issue never fails the sync; a dry run prints the comment instead.
+
+### Generated-file header
+
+With `FILE_HEADER: true` every synced file whose format has comments starts with a header, so it is clear in the target repository that the file is synced and where to change it:
 
 ```yml
-# README.md
+# Code generated by file-sync from webitel/reusable-configs. DO NOT EDIT.
+# Source: golang/workflows/pull-request.yml.njk
+# Edit the source instead; local changes are overwritten on the next sync.
 
-Created by Webitel (@webitel)
+name: PR ( cases )
 ```
 
-You can also use `extends` with a relative path to inherit other templates. Take a look at Nunjucks [template syntax](https://mozilla.github.io/nunjucks/templating.html) for more info.
+| Comment syntax | Files |
+|---|---|
+| `#` | `.yml`, `.yaml`, `.sh`, `.bash`, `.py`, `.toml`, `.ini`, `.cfg`, `.conf`, `.properties`, `Makefile`, `Dockerfile*`, `.env*`, `.gitignore`, `.dockerignore`, `.gitattributes`, `.editorconfig` |
+| `//` | `.go`, `.js`, `.mjs`, `.cjs`, `.ts`, `.jsonc`, `.json` under `.vscode/` |
+| `<!-- -->` | `.xml`, `.iml`, `.html` |
+
+- Other files (plain `.json`, Markdown, binaries, unknown types) are left as they are; the manifest still lists them.
+- The header goes after a shebang or an XML declaration, is added after template rendering, and is replaced (never duplicated) on later syncs. It has no SHA or date, so it does not change on every sync.
+- Go files get the standard `// Code generated … DO NOT EDIT.` marker that Go tooling and GitHub recognize.
+- Skip it per entry with `header: false`, e.g. for IDE settings that the IDE rewrites without comments:
 
 ```yml
-user/repo:
-  - source: .github/workflows/child.yml
-    template: true
+files:
+  - source: golang/.idea
+    dest: .idea
+    header: false
 ```
+
+### Manifest of managed files
+
+Every target repository gets a manifest at `.github/file-sync/<SYNC_NAME>.yml`, written in the same commit as the synced files. It lists each managed file with its source path and the SHA-256 of its content, plus the source repository, config and commit the content comes from:
 
 ```yml
-# child.yml
-{% extends './parent.yml' %}
-
-{% block some_block %}
-This is some content
-{% endblock %}
+# Code generated by file-sync. DO NOT EDIT.
+# Files managed by the "golang-sync" stream of webitel/reusable-configs.
+version: 1
+source:
+  repository: webitel/reusable-configs
+  config: golang/sync.yml
+  sha: 1a2b3c4d5e6f...
+files:
+  .github/workflows/pull-request.yml:
+    source: golang/workflows/pull-request.yml.njk
+    sha256: 9f0c...
 ```
 
-### Delete orphaned files
-
-With the `deleteOrphaned` option you can choose to delete files in the target repository if they are deleted in the source repository. The option defaults to `false` and only works when [syncing entire directories](#sync-entire-directories):
-
-```yml
-user/repo:
-  - source: workflows/
-    dest: .github/workflows/
-    deleteOrphaned: true
-```
-
-It only takes effect on that specific directory.
-
-### Sync the same files to multiple repositories
-
-Instead of repeating yourself listing the same files for multiple repositories, you can create a group:
-
-```yml
-group:
-  repos: |
-    user/repo
-    user/repo1
-  files: 
-    - source: workflows/build.yml
-      dest: .github/workflows/build.yml
-    - source: LICENSE.md
-      dest: LICENSE
-```
-
-You can create multiple groups like this:
-
-```yml
-group:
-  # first group
-  - files:
-      - source: workflows/build.yml
-        dest: .github/workflows/build.yml
-      - source: LICENSE.md
-        dest: LICENSE
-    repos: |
-      user/repo1
-      user/repo2
-
-  # second group
-  - files: 
-      - source: configs/dependabot.yml
-        dest: .github/dependabot.yml
-    repos: |
-      user/repo3
-      user/repo4
-```
-
-### Syncing branches
-
-You can also sync different branches from the same or different repositories (#51). For example, a repository named `foo/bar` with branch `main`, and `sync.yml` contents:
-
-```yml
-group:
-  repos: |
-    foo/bar@de
-    foo/bar@es
-    foo/bar@fr
-  files:
-    - source: .github/workflows/
-      dest: .github/workflows/
-```
-
-Here all files in `.github/workflows/` will be synced from the `main` branch to the branches `de`/`es`/`fr`.
+- Directories are listed file by file; files with `replace: false` are not listed, because the target repository owns them once they exist.
+- The manifest only changes together with the synced files, so source commits that do not affect a repository do not open sync pull requests there.
+- `source.sha` marks the last synced source commit. The next sync lists the source commits since then that touched the sync config or the sources of changed files; this needs the source repository checked out with `fetch-depth: 0` (a warning is logged otherwise).
+- **Removed files**: a file listed in the manifest that the config no longer produces (entry removed, file removed from a synced directory) is deleted with `DELETE_REMOVED: true` (default). It is kept when its entry switched to `replace: false` or the configured source is missing; with `DELETE_REMOVED: false` it is kept and simply no longer managed.
+- **Drift**: a managed file whose content no longer matches its hash was edited (or deleted) in the target repository after the last sync. With `ON_DRIFT: warn` (default) the sync restores it, logs a warning and lists it under "Local changes overwritten" in the PR and in the commit message; with `ON_DRIFT: fail` the repository is skipped and the run fails.
+- Each sync config should use its own `SYNC_NAME` (the default derived from `CONFIG_PATH` already differs per config). A warning is logged when a file is listed in the manifest of another stream.
 
 ## 📖 Examples
 
 Here are a few examples to help you get started!
 
-### Basic Example
-
-**.github/sync.yml**
-
-```yml
-user/repository:
-  - LICENSE
-  - .gitignore
-```
-
-### Sync all workflow files
-
-This example will keep all your `.github/workflows` files in sync across multiple repositories:
-
-**.github/sync.yml**
-
-```yml
-group:
-  repos: |
-    user/repo1
-    user/repo2
-  files:
-    - source: .github/workflows/
-      dest: .github/workflows/
-```
-
 ### Custom labels
 
-By default [repo-file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) will add the `sync` label to every PR it creates. You can turn this off by setting `PR_LABELS` to false, or specify your own labels:
+By default [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) will add the `sync` label to every PR it creates. You can turn this off by setting `PR_LABELS` to false, or specify your own labels:
 
 **.github/workflows/sync.yml**
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     PR_LABELS: |
@@ -418,13 +388,13 @@ By default [repo-file-sync-action](https://github.com/webitel/reusable-workflows
 
 ### Assign a user to the PR
 
-You can tell [repo-file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) to assign users to the PR with `ASSIGNEES`:
+You can tell [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) to assign users to the PR with `ASSIGNEES`:
 
 **.github/workflows/sync.yml**
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     ASSIGNEES: user
@@ -432,13 +402,13 @@ You can tell [repo-file-sync-action](https://github.com/webitel/reusable-workflo
 
 ### Request a PR review
 
-You can tell [repo-file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) to request a review of the PR from users with `REVIEWERS` and from teams with `TEAM_REVIEWERS`:
+You can tell [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) to request a review of the PR from users with `REVIEWERS` and from teams with `TEAM_REVIEWERS`:
 
 **.github/workflows/sync.yml**
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     REVIEWERS: |
@@ -447,38 +417,16 @@ You can tell [repo-file-sync-action](https://github.com/webitel/reusable-workflo
     TEAM_REVIEWERS: engineering
 ```
 
-### Custom GitHub Enterprise Host
-
-If your target repository is hosted on a GitHub Enterprise Server you can specify a custom host name like this:
-
-**.github/workflows/sync.yml**
-
-```yml
-https://custom.host/user/repo:
-  - path/to/file.txt
-
-# or in a group
-
-group:
-  - files:
-      - source: path/to/file.txt
-        dest: path/to/file.txt
-    repos: |
-      https://custom.host/user/repo
-```
-
-> **Note:** The key has to start with http to indicate that you want to use a custom host.
-
 ### Different branch prefix
 
 By default all new branches created in the target repo will be in the this format: `repo-sync/SOURCE_REPO_NAME/SOURCE_BRANCH_NAME`, with the SOURCE_REPO_NAME being replaced with the name of the source repo and SOURCE_BRANCH_NAME with the name of the source branch.
 
-If your repo name contains invalid characters, like a dot ([#32](https://github.com/webitel/reusable-workflows/actions/file-sync-action/issues/32)), you can specify a different prefix for the branch (the text before `/SOURCE_BRANCH_NAME`):
+If your repo name contains invalid characters, like a dot ([BetaHuhn/repo-file-sync-action#32](https://github.com/BetaHuhn/repo-file-sync-action/issues/32)), you can specify a different prefix for the branch (the text before `/SOURCE_BRANCH_NAME`):
 
 **.github/workflows/sync.yml**
 
 ```yml
-uses: webitel/reusable-workflows/actions/file-sync-action@v1
+uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
 with:
     GH_PAT: ${{ secrets.GH_PAT }}
     BRANCH_PREFIX: custom-branch
@@ -488,27 +436,6 @@ The new branch will then be `custom-branch/SOURCE_BRANCH_NAME`.
 
 > You can use `SOURCE_REPO_NAME` in your custom branch prefix as well and it will be replaced with the actual repo name
 
-### Custom commit body
-
-You can specify a custom commit body. This will be appended to the commit message, separated by two new lines. For example:
-
-**.github/workflows/sync.yml**
-
-```yml
-- name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
-  with:
-    GH_PAT: ${{ secrets.GH_PAT }}
-    COMMIT_BODY: "Change-type: patch"
-```
-
-The above example would result in a commit message that looks something like this:
-```
-🔄 synced local '<filename>' with remote '<filename>'
-
-Change-type: patch
-```
-
 ### Add content to the PR body
 
 You can add more content to the PR body with the `PR_BODY` option. For example:
@@ -517,25 +444,13 @@ You can add more content to the PR body with the `PR_BODY` option. For example:
 
 ```yml
 - name: Run GitHub File Sync
-  uses: webitel/reusable-workflows/actions/file-sync-action@v1
+  uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
   with:
     GH_PAT: ${{ secrets.GH_PAT }}
     PR_BODY: This is your custom PR Body
 ```
 
-It will be added below the first line of the body and above the list of changed files. The above example would result in a PR body that looks something like this:
-
-```
-synced local file(s) with GITHUB_REPOSITORY.
-
-This is your custom PR Body
-
-▶ Changed files
-
----
-
-This PR was created automatically by the file-sync-action workflow run xxx.
-```
+It is added after the list of files, above the footer.
 
 ### Fork and pull request workflow
 
@@ -546,7 +461,7 @@ A fork of each target repository will be created on this account, and all change
 Note: while you can open pull requests to target repositories without write access, some features, like applying labels, are not possible.
 
 ```yml
-uses: webitel/reusable-workflows/actions/file-sync-action@v1
+uses: webitel/reusable-workflows/actions/file-sync@file-sync-v3
 with:
     GH_PAT: ${{ secrets.GH_PAT }}
     FORK: file-sync-bot
@@ -560,4 +475,4 @@ The actual source code of this library is in the `src` folder.
 
 - run `yarn lint` or `npm run lint` to run eslint.
 - run `yarn start` or `npm run start` to run the Action locally.
-- run `yarn build` or `npm run build` to produce a production version of [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) in the `dist` folder.
+- run `yarn build` or `npm run build` to produce a production version of [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync) in the `dist` folder.

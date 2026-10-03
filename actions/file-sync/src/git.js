@@ -1,6 +1,5 @@
 import { parse } from '@putout/git-status-porcelain'
 import * as core from '@actions/core'
-import * as github from '@actions/github'
 import { GitHub, getOctokitOptions } from '@actions/github/lib/utils'
 import { throttling } from '@octokit/plugin-throttling'
 import * as path from 'path'
@@ -15,17 +14,14 @@ const {
     GIT_USERNAME,
     GIT_EMAIL,
     TMP_DIR,
-    COMMIT_BODY,
-    COMMIT_PREFIX,
     GITHUB_REPOSITORY,
     OVERWRITE_EXISTING_PR,
     SKIP_PR,
-    PR_BODY,
     BRANCH_PREFIX,
     FORK
 } = config
 
-import { dedent, execCmd, shellQuote } from './helpers.js'
+import { execCmd, shellQuote } from './helpers.js'
 
 export default class Git {
     constructor() {
@@ -47,7 +43,7 @@ export default class Git {
 
         const octokit = new Octokit(options)
 
-        // We only need the rest client
+        this.octokit = octokit
         this.github = octokit.rest
     }
 
@@ -66,6 +62,7 @@ export default class Git {
         await this.setIdentity()
         await this.getBaseBranch()
         await this.getLastCommitSha()
+        this.baseSha = this.lastCommitSha
 
         if (FORK) {
             const forkUrl = new URL(GITHUB_SERVER_URL)
@@ -157,50 +154,9 @@ export default class Git {
         )
     }
 
-    isOneCommitPush() {
-        return github.context.eventName === 'push' && github.context.payload.commits.length === 1
-    }
-
-    originalCommitMessage() {
-        return github.context.payload.commits[0].message
-    }
-
-    parseGitDiffOutput(string) { // parses git diff output and returns a dictionary mapping the file path to the diff output for this file
-        // split diff into separate entries for separate files. \ndiff --git should be a reliable way to detect the separation, as content of files is always indented
-        return `\n${ string }`.split('\ndiff --git').slice(1).reduce((resultDict, fileDiff) => {
-            const lines = fileDiff.split('\n')
-            const lastHeaderLineIndex = lines.findIndex((line) => line.startsWith('+++'))
-            if (lastHeaderLineIndex === -1) return resultDict // ignore binary files
-
-            const plainDiff = lines.slice(lastHeaderLineIndex + 1).join('\n').trim()
-            let filePath = ''
-            if (lines[lastHeaderLineIndex].startsWith('+++ b/')) { // every file except removed files
-                filePath = lines[lastHeaderLineIndex].slice(6) // remove '+++ b/'
-            } else { // for removed file need to use header line with filename before deletion
-                filePath = lines[lastHeaderLineIndex - 1].slice(6) // remove '--- a/'
-            }
-            return { ...resultDict, [filePath]: plainDiff }
-        }, {})
-    }
-
-    async getChangesFromLastCommit(source) { // gets array of git diffs for the source, which either can be a file or a dict
-        if (this.lastCommitChanges === undefined) {
-            const diff = await this.github.repos.compareCommits({
-                mediaType: {
-                    format: 'diff'
-                },
-                owner: github.context.payload.repository.owner.name,
-                repo: github.context.payload.repository.name,
-                base: github.context.payload.before,
-                head: github.context.payload.after
-            })
-            this.lastCommitChanges = this.parseGitDiffOutput(diff.data)
-        }
-        if (source.endsWith('/')) {
-            return Object.keys(this.lastCommitChanges).filter((filePath) => filePath.startsWith(source)).reduce((result, key) => [ ...result, this.lastCommitChanges[key] ], [])
-        } else {
-            return this.lastCommitChanges[source] === undefined ? [] : [ this.lastCommitChanges[source] ]
-        }
+    // SHA of the source repository checkout the action runs in
+    async sourceSha() {
+        return execCmd(`git rev-parse HEAD`, process.cwd())
     }
 
     async getLastCommitSha() {
@@ -210,12 +166,19 @@ export default class Git {
         )
     }
 
-    async changes(destination) { // gets array of git diffs for the destination, which either can be a file or a dict
+    // Files changed in the working tree compared to the cloned base commit, as [{ status, file }] with status A, M or D
+    async changedFiles() {
+        await execCmd(`git add -A`, this.workingDir)
         const output = await execCmd(
-            `git diff HEAD -- ${ shellQuote(destination) }`,
+            `git diff --cached --name-status --no-renames ${ this.baseSha }`,
             this.workingDir
         )
-        return Object.values(this.parseGitDiffOutput(output))
+        if (output === '') return []
+
+        return output.split('\n').map((line) => {
+            const [ status, file ] = line.split('\t')
+            return { status, file }
+        })
     }
 
     async hasChanges() {
@@ -227,11 +190,7 @@ export default class Git {
         return parse(statusOutput).length !== 0
     }
 
-    async commit(msg) {
-        let message = msg !== undefined ? msg : `${ COMMIT_PREFIX } synced file(s) with ${ GITHUB_REPOSITORY }`
-        if (COMMIT_BODY) {
-            message += `\n\n${ COMMIT_BODY }`
-        }
+    async commit(message) {
         return execCmd(
             `git commit -m ${ shellQuote(message) }`,
             this.workingDir
@@ -396,48 +355,81 @@ export default class Git {
         return this.existingPr
     }
 
-    async setPrWarning() {
+    async listPrCommits() {
+        return this.octokit.paginate(this.github.pulls.listCommits, {
+            owner: this.repo.user,
+            repo: this.repo.name,
+            pull_number: this.existingPr.number,
+            per_page: 100
+        })
+    }
+
+    async listPrComments() {
+        return this.octokit.paginate(this.github.issues.listComments, {
+            owner: this.repo.user,
+            repo: this.repo.name,
+            issue_number: this.existingPr.number,
+            per_page: 100
+        })
+    }
+
+    async commentPr(body) {
+        await this.github.issues.createComment({
+            owner: this.repo.user,
+            repo: this.repo.name,
+            issue_number: this.existingPr.number,
+            body
+        })
+    }
+
+    // Closes the existing PR and deletes its branch
+    async closePr() {
         await this.github.pulls.update({
             owner: this.repo.user,
             repo: this.repo.name,
             pull_number: this.existingPr.number,
-            body: dedent(`
-				⚠️ This PR is being automatically resynced ⚠️
-
-				${ this.existingPr.body }
-			`)
+            state: 'closed'
         })
+        await execCmd(
+            `git push ${ FORK ? 'fork' : this.gitUrl } --delete ${ shellQuote(this.prBranch) }`,
+            this.workingDir
+        )
     }
 
-    async removePrWarning() {
-        await this.github.pulls.update({
-            owner: this.repo.user,
-            repo: this.repo.name,
-            pull_number: this.existingPr.number,
-            body: this.existingPr.body.replace('⚠️ This PR is being automatically resynced ⚠️', '')
-        })
+    // Fetches the head of the existing PR branch and tells whether its paths have the same content as the staged sync
+    async prHeadMatches(paths) {
+        await execCmd(
+            `git fetch -q --depth 1 ${ FORK ? 'fork' : this.gitUrl } ${ shellQuote(this.prBranch) }`,
+            this.workingDir
+        )
+        try {
+            await execCmd(
+                `git diff --cached --quiet FETCH_HEAD -- ${ paths.map(shellQuote).join(' ') }`,
+                this.workingDir
+            )
+            return true
+        } catch {
+            return false
+        }
     }
 
-    async createOrUpdatePr(changedFiles, title) {
-        const body = dedent(`
-			synced local file(s) with [${ GITHUB_REPOSITORY }](${ GITHUB_SERVER_URL }/${ GITHUB_REPOSITORY }).
+    // Content of a file at the fetched PR head, or undefined when it does not exist there
+    async prHeadFile(file) {
+        try {
+            return await execCmd(`git show ${ shellQuote(`FETCH_HEAD:${ file }`) }`, this.workingDir, false)
+        } catch {
+            return undefined
+        }
+    }
 
-			${ PR_BODY }
-
-			${ changedFiles }
-
-			---
-
-			This PR was created automatically by the [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) workflow run [#${ process.env.GITHUB_RUN_ID || 0 }](${ GITHUB_SERVER_URL }/${ GITHUB_REPOSITORY }/actions/runs/${ process.env.GITHUB_RUN_ID || 0 })
-		`)
-
+    async createOrUpdatePr(title, body) {
         if (this.existingPr) {
             core.info(`Overwriting existing PR`)
 
             const { data } = await this.github.pulls.update({
                 owner: this.repo.user,
                 repo: this.repo.name,
-                title: `${ COMMIT_PREFIX } synced file(s) with ${ GITHUB_REPOSITORY }`,
+                title: title,
                 pull_number: this.existingPr.number,
                 body: body
             })
@@ -450,7 +442,7 @@ export default class Git {
         const { data } = await this.github.pulls.create({
             owner: this.repo.user,
             repo: this.repo.name,
-            title: title === undefined ? `${ COMMIT_PREFIX } synced file(s) with ${ GITHUB_REPOSITORY }` : title,
+            title: title,
             body: body,
             head: `${ FORK ? FORK : this.repo.user }:${ this.prBranch }`,
             base: this.baseBranch

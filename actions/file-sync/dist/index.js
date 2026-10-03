@@ -1,8 +1,9 @@
 import * as os from 'os';
 import os__default, { EOL } from 'os';
 import * as crypto from 'crypto';
+import { createHash } from 'crypto';
 import * as fs$2 from 'fs';
-import fs__default, { promises, existsSync, readFileSync } from 'fs';
+import fs__default, { promises, constants as constants$5, existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import path__default from 'path';
 import http from 'http';
@@ -11,7 +12,7 @@ import 'net';
 import require$$1 from 'tls';
 import events$1 from 'events';
 import require$$5$4 from 'assert';
-import require$$6 from 'util';
+import require$$6, { promisify } from 'util';
 import require$$0$1 from 'node:assert';
 import require$$0$3 from 'node:net';
 import require$$2 from 'node:http';
@@ -31,7 +32,7 @@ import require$$5$2 from 'node:async_hooks';
 import require$$1$4 from 'node:console';
 import require$$1$5 from 'node:dns';
 import require$$5$3 from 'string_decoder';
-import child, { exec } from 'child_process';
+import child, { exec, execFile } from 'child_process';
 import 'timers';
 import require$$0$6 from 'constants';
 import require$$0$7 from 'stream';
@@ -28541,7 +28542,7 @@ var MediaTypes;
     });
 };
 
-(undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
+var __awaiter$1 = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
         function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
@@ -28551,6 +28552,268 @@ var MediaTypes;
     });
 };
 const { access, appendFile, writeFile } = promises;
+const SUMMARY_ENV_VAR = 'GITHUB_STEP_SUMMARY';
+class Summary {
+    constructor() {
+        this._buffer = '';
+    }
+    /**
+     * Finds the summary file path from the environment, rejects if env var is not found or file does not exist
+     * Also checks r/w permissions.
+     *
+     * @returns step summary file path
+     */
+    filePath() {
+        return __awaiter$1(this, void 0, void 0, function* () {
+            if (this._filePath) {
+                return this._filePath;
+            }
+            const pathFromEnv = process.env[SUMMARY_ENV_VAR];
+            if (!pathFromEnv) {
+                throw new Error(`Unable to find environment variable for $${SUMMARY_ENV_VAR}. Check if your runtime environment supports job summaries.`);
+            }
+            try {
+                yield access(pathFromEnv, constants$5.R_OK | constants$5.W_OK);
+            }
+            catch (_a) {
+                throw new Error(`Unable to access summary file: '${pathFromEnv}'. Check if the file has correct read/write permissions.`);
+            }
+            this._filePath = pathFromEnv;
+            return this._filePath;
+        });
+    }
+    /**
+     * Wraps content in an HTML tag, adding any HTML attributes
+     *
+     * @param {string} tag HTML tag to wrap
+     * @param {string | null} content content within the tag
+     * @param {[attribute: string]: string} attrs key-value list of HTML attributes to add
+     *
+     * @returns {string} content wrapped in HTML element
+     */
+    wrap(tag, content, attrs = {}) {
+        const htmlAttrs = Object.entries(attrs)
+            .map(([key, value]) => ` ${key}="${value}"`)
+            .join('');
+        if (!content) {
+            return `<${tag}${htmlAttrs}>`;
+        }
+        return `<${tag}${htmlAttrs}>${content}</${tag}>`;
+    }
+    /**
+     * Writes text in the buffer to the summary buffer file and empties buffer. Will append by default.
+     *
+     * @param {SummaryWriteOptions} [options] (optional) options for write operation
+     *
+     * @returns {Promise<Summary>} summary instance
+     */
+    write(options) {
+        return __awaiter$1(this, void 0, void 0, function* () {
+            const overwrite = !!(options === null || options === void 0 ? void 0 : options.overwrite);
+            const filePath = yield this.filePath();
+            const writeFunc = overwrite ? writeFile : appendFile;
+            yield writeFunc(filePath, this._buffer, { encoding: 'utf8' });
+            return this.emptyBuffer();
+        });
+    }
+    /**
+     * Clears the summary buffer and wipes the summary file
+     *
+     * @returns {Summary} summary instance
+     */
+    clear() {
+        return __awaiter$1(this, void 0, void 0, function* () {
+            return this.emptyBuffer().write({ overwrite: true });
+        });
+    }
+    /**
+     * Returns the current summary buffer as a string
+     *
+     * @returns {string} string of summary buffer
+     */
+    stringify() {
+        return this._buffer;
+    }
+    /**
+     * If the summary buffer is empty
+     *
+     * @returns {boolen} true if the buffer is empty
+     */
+    isEmptyBuffer() {
+        return this._buffer.length === 0;
+    }
+    /**
+     * Resets the summary buffer without writing to summary file
+     *
+     * @returns {Summary} summary instance
+     */
+    emptyBuffer() {
+        this._buffer = '';
+        return this;
+    }
+    /**
+     * Adds raw text to the summary buffer
+     *
+     * @param {string} text content to add
+     * @param {boolean} [addEOL=false] (optional) append an EOL to the raw text (default: false)
+     *
+     * @returns {Summary} summary instance
+     */
+    addRaw(text, addEOL = false) {
+        this._buffer += text;
+        return addEOL ? this.addEOL() : this;
+    }
+    /**
+     * Adds the operating system-specific end-of-line marker to the buffer
+     *
+     * @returns {Summary} summary instance
+     */
+    addEOL() {
+        return this.addRaw(EOL);
+    }
+    /**
+     * Adds an HTML codeblock to the summary buffer
+     *
+     * @param {string} code content to render within fenced code block
+     * @param {string} lang (optional) language to syntax highlight code
+     *
+     * @returns {Summary} summary instance
+     */
+    addCodeBlock(code, lang) {
+        const attrs = Object.assign({}, (lang && { lang }));
+        const element = this.wrap('pre', this.wrap('code', code), attrs);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML list to the summary buffer
+     *
+     * @param {string[]} items list of items to render
+     * @param {boolean} [ordered=false] (optional) if the rendered list should be ordered or not (default: false)
+     *
+     * @returns {Summary} summary instance
+     */
+    addList(items, ordered = false) {
+        const tag = ordered ? 'ol' : 'ul';
+        const listItems = items.map(item => this.wrap('li', item)).join('');
+        const element = this.wrap(tag, listItems);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML table to the summary buffer
+     *
+     * @param {SummaryTableCell[]} rows table rows
+     *
+     * @returns {Summary} summary instance
+     */
+    addTable(rows) {
+        const tableBody = rows
+            .map(row => {
+            const cells = row
+                .map(cell => {
+                if (typeof cell === 'string') {
+                    return this.wrap('td', cell);
+                }
+                const { header, data, colspan, rowspan } = cell;
+                const tag = header ? 'th' : 'td';
+                const attrs = Object.assign(Object.assign({}, (colspan && { colspan })), (rowspan && { rowspan }));
+                return this.wrap(tag, data, attrs);
+            })
+                .join('');
+            return this.wrap('tr', cells);
+        })
+            .join('');
+        const element = this.wrap('table', tableBody);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds a collapsable HTML details element to the summary buffer
+     *
+     * @param {string} label text for the closed state
+     * @param {string} content collapsable content
+     *
+     * @returns {Summary} summary instance
+     */
+    addDetails(label, content) {
+        const element = this.wrap('details', this.wrap('summary', label) + content);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML image tag to the summary buffer
+     *
+     * @param {string} src path to the image you to embed
+     * @param {string} alt text description of the image
+     * @param {SummaryImageOptions} options (optional) addition image attributes
+     *
+     * @returns {Summary} summary instance
+     */
+    addImage(src, alt, options) {
+        const { width, height } = options || {};
+        const attrs = Object.assign(Object.assign({}, (width && { width })), (height && { height }));
+        const element = this.wrap('img', null, Object.assign({ src, alt }, attrs));
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML section heading element
+     *
+     * @param {string} text heading text
+     * @param {number | string} [level=1] (optional) the heading level, default: 1
+     *
+     * @returns {Summary} summary instance
+     */
+    addHeading(text, level) {
+        const tag = `h${level}`;
+        const allowedTag = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)
+            ? tag
+            : 'h1';
+        const element = this.wrap(allowedTag, text);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML thematic break (<hr>) to the summary buffer
+     *
+     * @returns {Summary} summary instance
+     */
+    addSeparator() {
+        const element = this.wrap('hr', null);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML line break (<br>) to the summary buffer
+     *
+     * @returns {Summary} summary instance
+     */
+    addBreak() {
+        const element = this.wrap('br', null);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML blockquote to the summary buffer
+     *
+     * @param {string} text quote text
+     * @param {string} cite (optional) citation url
+     *
+     * @returns {Summary} summary instance
+     */
+    addQuote(text, cite) {
+        const attrs = Object.assign({}, (cite && { cite }));
+        const element = this.wrap('blockquote', text, attrs);
+        return this.addRaw(element).addEOL();
+    }
+    /**
+     * Adds an HTML anchor tag to the summary buffer
+     *
+     * @param {string} text link text/content
+     * @param {string} href hyperlink
+     *
+     * @returns {Summary} summary instance
+     */
+    addLink(text, href) {
+        const element = this.wrap('a', text, { href });
+        return this.addRaw(element).addEOL();
+    }
+}
+const _summary = new Summary();
+const summary = _summary;
 
 (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
@@ -34221,8 +34484,6 @@ function getOctokitOptions(token, options) {
     }
     return opts;
 }
-
-const context$1 = new Context();
 
 var light$1 = {exports: {}};
 
@@ -42175,9 +42436,150 @@ function requireLib$1 () {
 
 var libExports = requireLib$1();
 
+const MANIFEST_DIR = ".github/file-sync";
+const MANIFEST_VERSION = 1;
+function manifestName(configPath) {
+  return path.posix.normalize(configPath).replace(/^\.github\//, "").replace(/\.ya?ml$/, "").replace(/\//g, "-");
+}
+function manifestPath(name) {
+  return `${MANIFEST_DIR}/${name}.yml`;
+}
+function sha256(content) {
+  return createHash("sha256").update(content).digest("hex");
+}
+function serializeManifest({ name, repository, config, sha, files }) {
+  const sorted = Object.fromEntries(Object.keys(files).sort().map((dest) => [dest, files[dest]]));
+  const body = dump({
+    version: MANIFEST_VERSION,
+    source: { repository, config, sha },
+    files: sorted
+  }, { lineWidth: -1, noRefs: true });
+  return `# Code generated by file-sync. DO NOT EDIT.
+# Files managed by the "${name}" stream of ${repository}.
+${body}`;
+}
+function parseManifest(text) {
+  const manifest = load(text);
+  if (manifest?.version !== MANIFEST_VERSION) {
+    throw new Error(`unsupported manifest version ${manifest?.version}`);
+  }
+  return {
+    version: manifest.version,
+    source: manifest.source || {},
+    files: manifest.files || {}
+  };
+}
+async function readManifest(file) {
+  if (!await fs.pathExists(file)) return void 0;
+  return parseManifest(await fs.readFile(file, "utf8"));
+}
+function sameFiles(a = {}, b = {}) {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((dest) => b[dest] !== void 0 && a[dest].source === b[dest].source && a[dest].sha256 === b[dest].sha256);
+}
+async function findOwnershipConflicts(repoDir, name, destFiles) {
+  const dir = path.join(repoDir, MANIFEST_DIR);
+  if (!await fs.pathExists(dir)) return [];
+  const conflicts = [];
+  for (const entry of (await fs.readdir(dir)).sort()) {
+    const stream = entry.replace(/\.yml$/, "");
+    if (stream === entry || stream === name) continue;
+    const other = await readManifest(path.join(dir, entry));
+    for (const dest of destFiles) {
+      if (other.files[dest] !== void 0) conflicts.push({ dest, stream });
+    }
+  }
+  return conflicts;
+}
+async function findDrift(repoDir, manifest) {
+  const drift = [];
+  for (const dest of Object.keys(manifest.files).sort()) {
+    const file = path.join(repoDir, dest);
+    if (!await fs.pathExists(file)) {
+      drift.push({ dest, deleted: true });
+    } else if (sha256(await fs.readFile(file)) !== manifest.files[dest].sha256) {
+      drift.push({ dest, deleted: false });
+    }
+  }
+  return drift;
+}
+
 const REPLACE_DEFAULT = true;
-const TEMPLATE_DEFAULT = false;
 const DELETE_ORPHANED_DEFAULT = false;
+const CONFIG_KEYS = ["defaults", "files", "repos"];
+function parseRepoName(fullRepo, serverUrl) {
+  let host = new URL(serverUrl).host;
+  if (fullRepo.startsWith("http")) {
+    const url = new URL(fullRepo);
+    host = url.host;
+    fullRepo = url.pathname.replace(/^\/+/, "");
+    info("Using custom host");
+  }
+  const user = fullRepo.split("/")[0];
+  const name = fullRepo.split("/")[1].split("@")[0];
+  const branch = fullRepo.split("@")[1] || "default";
+  return {
+    fullName: `${host}/${user}/${name}`,
+    uniqueName: `${host}/${user}/${name}@${branch}`,
+    host,
+    user,
+    name,
+    branch
+  };
+}
+function parseExclude(text, src) {
+  if (text === void 0 || typeof text !== "string") return void 0;
+  const files = text.split("\n").filter((i) => i);
+  return files.map((file) => path.join(src, file));
+}
+function parseFile(item, template) {
+  if (typeof item === "string") item = { source: item };
+  if (item.source === void 0) {
+    warning("Warn: No source files specified");
+    return void 0;
+  }
+  return {
+    source: item.source,
+    dest: item.dest || item.source,
+    template: template(item),
+    replace: item.replace === void 0 ? REPLACE_DEFAULT : item.replace,
+    deleteOrphaned: item.deleteOrphaned === void 0 ? DELETE_ORPHANED_DEFAULT : item.deleteOrphaned,
+    header: item.header !== false,
+    exclude: parseExclude(item.exclude, item.source)
+  };
+}
+const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+function deepMerge(base, override) {
+  if (!isObject(base) || !isObject(override)) return override === void 0 ? base : override;
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(override)) merged[key] = deepMerge(base[key], value);
+  return merged;
+}
+function matches(when, vars) {
+  if (when === void 0) return true;
+  if (Array.isArray(when)) return when.every((condition) => matches(condition, vars));
+  const negate = String(when).startsWith("!");
+  const value = String(when).replace(/^!/, "").split(".").reduce((v, key) => isObject(v) ? v[key] : void 0, vars);
+  return negate ? !value : Boolean(value);
+}
+function parseSyncConfig(config, { serverUrl }) {
+  for (const key of Object.keys(config || {})) {
+    if (!CONFIG_KEYS.includes(key)) throw new Error(`unknown key "${key}" in the sync config`);
+  }
+  if (!isObject(config?.repos)) throw new Error("the sync config has no repos");
+  return Object.entries(config.repos).map(([name, repoVars]) => {
+    const vars = deepMerge(config.defaults || {}, repoVars || {});
+    const template = (item) => {
+      if (isObject(item.template)) return deepMerge(vars, item.template);
+      if (item.template === true || item.template === void 0 && item.source.endsWith(".njk")) return vars;
+      return false;
+    };
+    const files = (config.files || []).filter((item) => matches(item.when, vars)).map((item) => parseFile(item, template)).filter(Boolean);
+    return { repo: parseRepoName(name, serverUrl), files };
+  });
+}
+
 let context;
 try {
   let isInstallationToken = false;
@@ -42212,19 +42614,8 @@ try {
       key: "IS_FINE_GRAINED",
       default: false
     }),
-    COMMIT_BODY: libExports.getInput({
-      key: "COMMIT_BODY",
-      default: ""
-    }),
-    COMMIT_PREFIX: libExports.getInput({
-      key: "COMMIT_PREFIX",
-      default: "\u{1F504}"
-    }),
-    COMMIT_EACH_FILE: libExports.getInput({
-      key: "COMMIT_EACH_FILE",
-      type: "boolean",
-      default: true
-    }),
+    // Read directly: action-input-parser treats an empty value as unset, which makes the prefix impossible to disable.
+    TITLE_PREFIX: process.env.INPUT_TITLE_PREFIX !== void 0 ? process.env.INPUT_TITLE_PREFIX.trim() : "chore(sync)",
     PR_LABELS: libExports.getInput({
       key: "PR_LABELS",
       default: ["sync"],
@@ -42255,6 +42646,19 @@ try {
       key: "DRY_RUN",
       type: "boolean",
       default: false
+    }),
+    STATUS_ISSUE: libExports.getInput({
+      key: "STATUS_ISSUE"
+    }),
+    FILE_HEADER: libExports.getInput({
+      key: "FILE_HEADER",
+      type: "boolean",
+      default: false
+    }),
+    DELETE_REMOVED: libExports.getInput({
+      key: "DELETE_REMOVED",
+      type: "boolean",
+      default: true
     }),
     SKIP_CLEANUP: libExports.getInput({
       key: "SKIP_CLEANUP",
@@ -42299,16 +42703,6 @@ try {
       type: "boolean",
       default: false
     }),
-    ORIGINAL_MESSAGE: libExports.getInput({
-      key: "ORIGINAL_MESSAGE",
-      type: "boolean",
-      default: false
-    }),
-    COMMIT_AS_PR_TITLE: libExports.getInput({
-      key: "COMMIT_AS_PR_TITLE",
-      type: "boolean",
-      default: false
-    }),
     BRANCH_PREFIX: libExports.getInput({
       key: "BRANCH_PREFIX",
       default: "repo-sync/SOURCE_REPO_NAME"
@@ -42319,6 +42713,17 @@ try {
       disableable: true
     })
   };
+  context.ON_DRIFT = libExports.getInput({
+    key: "ON_DRIFT",
+    default: "warn"
+  });
+  if (!["warn", "fail"].includes(context.ON_DRIFT)) {
+    throw new Error(`ON_DRIFT must be warn or fail, got ${context.ON_DRIFT}`);
+  }
+  context.SYNC_NAME = libExports.getInput({
+    key: "SYNC_NAME",
+    default: manifestName(context.CONFIG_PATH)
+  });
   setSecret(context.GITHUB_TOKEN);
   debug(JSON.stringify(context, null, 2));
   while (fs.existsSync(context.TMP_DIR)) {
@@ -42329,88 +42734,9 @@ try {
   setFailed(err.message);
   process.exit(1);
 }
-const parseRepoName = (fullRepo) => {
-  let host = new URL(context.GITHUB_SERVER_URL).host;
-  if (fullRepo.startsWith("http")) {
-    const url = new URL(fullRepo);
-    host = url.host;
-    fullRepo = url.pathname.replace(/^\/+/, "");
-    info("Using custom host");
-  }
-  const user = fullRepo.split("/")[0];
-  const name = fullRepo.split("/")[1].split("@")[0];
-  const branch = fullRepo.split("@")[1] || "default";
-  return {
-    fullName: `${host}/${user}/${name}`,
-    uniqueName: `${host}/${user}/${name}@${branch}`,
-    host,
-    user,
-    name,
-    branch
-  };
-};
-const parseExclude = (text, src) => {
-  if (text === void 0 || typeof text !== "string") return void 0;
-  const files = text.split("\n").filter((i) => i);
-  return files.map((file) => path.join(src, file));
-};
-const parseFiles = (files) => {
-  return files.map((item) => {
-    if (typeof item === "string")
-      item = { source: item };
-    if (item.source !== void 0) {
-      return {
-        source: item.source,
-        dest: item.dest || item.source,
-        template: item.template === void 0 ? TEMPLATE_DEFAULT : item.template,
-        replace: item.replace === void 0 ? REPLACE_DEFAULT : item.replace,
-        deleteOrphaned: item.deleteOrphaned === void 0 ? DELETE_ORPHANED_DEFAULT : item.deleteOrphaned,
-        exclude: parseExclude(item.exclude, item.source)
-      };
-    }
-    warning("Warn: No source files specified");
-  });
-};
-async function parseConfig() {
-  const fileContent = await fs.promises.readFile(context.CONFIG_PATH);
-  const configObject = load(fileContent.toString());
-  const result = {};
-  Object.keys(configObject).forEach((key) => {
-    if (key === "definitions") {
-      return;
-    }
-    if (key === "group") {
-      const rawObject = configObject[key];
-      const groups = Array.isArray(rawObject) ? rawObject : [rawObject];
-      groups.forEach((group) => {
-        const repos = typeof group.repos === "string" ? group.repos.split("\n").map((n) => n.trim()).filter((n) => n) : group.repos;
-        repos.forEach((name) => {
-          const files = parseFiles(group.files);
-          const repo = parseRepoName(name);
-          if (result[repo.uniqueName] !== void 0) {
-            result[repo.uniqueName].files.push(...files);
-            return;
-          }
-          result[repo.uniqueName] = {
-            repo,
-            files
-          };
-        });
-      });
-    } else {
-      const files = parseFiles(configObject[key]);
-      const repo = parseRepoName(key);
-      if (result[repo.uniqueName] !== void 0) {
-        result[repo.uniqueName].files.push(...files);
-        return;
-      }
-      result[repo.uniqueName] = {
-        repo,
-        files
-      };
-    }
-  });
-  return Object.values(result);
+async function parseConfig(configPath = context.CONFIG_PATH) {
+  const fileContent = await fs.promises.readFile(configPath);
+  return parseSyncConfig(load(fileContent.toString()), { serverUrl: context.GITHUB_SERVER_URL });
 }
 var config = context;
 
@@ -48837,31 +49163,6 @@ async function forEach(array, callback) {
     await callback(array[index], index, array);
   }
 }
-function dedent(templateStrings, ...values) {
-  const matches = [];
-  const strings = typeof templateStrings === "string" ? [templateStrings] : templateStrings.slice();
-  strings[strings.length - 1] = strings[strings.length - 1].replace(/\r?\n([\t ]*)$/, "");
-  for (let i = 0; i < strings.length; i++) {
-    let match;
-    if (match = strings[i].match(/\n[\t ]+/g)) {
-      matches.push(...match);
-    }
-  }
-  if (matches.length) {
-    const size = Math.min(...matches.map((value) => value.length - 1));
-    const pattern = new RegExp(`
-[	 ]{${size}}`, "g");
-    for (let i = 0; i < strings.length; i++) {
-      strings[i] = strings[i].replace(pattern, "\n");
-    }
-  }
-  strings[0] = strings[0].replace(/^\r?\n/, "");
-  let string = strings[0];
-  for (let i = 0; i < values.length; i++) {
-    string += values[i] + strings[i + 1];
-  }
-  return string;
-}
 function shellQuote(s) {
   return "'" + String(s).replace(/'/g, "'\\''") + "'";
 }
@@ -48897,56 +49198,42 @@ async function write(src, dest, context) {
   await fs.outputFile(dest, content);
 }
 async function copy(src, dest, isDirectory, file) {
-  const deleteOrphaned = isDirectory && file.deleteOrphaned;
-  const exclude = file.exclude;
-  const filterFunc = (file2) => {
-    if (exclude !== void 0) {
-      let filePath = "";
-      if (file2.endsWith("/")) {
-        filePath = file2;
-      } else {
-        filePath = file2.split("/").slice(0, -1).join("/") + "/";
-      }
-      if (exclude.includes(filePath)) {
-        debug(`Excluding file ${file2} since its path is included as one of the excluded paths.`);
-        return false;
-      }
-      if (exclude.includes(file2)) {
-        debug(`Excluding file ${file2} since it is explicitly added in the exclusion list.`);
-        return false;
-      }
-    }
-    return true;
-  };
-  if (file.template) {
-    if (isDirectory) {
-      debug(`Render all files in directory ${src} to ${dest}`);
-      const srcFileList = await listFiles(src);
-      for (const srcFile of srcFileList) {
-        if (!filterFunc(srcFile)) {
-          continue;
-        }
-        const srcPath = path.join(src, srcFile);
-        const destPath = path.join(dest, srcFile);
-        await write(srcPath, destPath, file.template);
-      }
+  const exclude = file.exclude || [];
+  const isExcluded = (sourcePath) => exclude.some((entry) => entry.endsWith("/") ? sourcePath.startsWith(entry) : sourcePath === entry);
+  const copyFile = async (source, target) => {
+    if (file.template) {
+      debug(`Render file ${source} to ${target}`);
+      await write(source, target, file.template);
     } else {
-      debug(`Render file ${src} to ${dest}`);
-      await write(src, dest, file.template);
+      debug(`Copy ${source} to ${target}`);
+      await fs.copy(source, target);
+    }
+  };
+  const written = [];
+  if (isDirectory) {
+    for (const relative of (await listFiles(src)).sort()) {
+      const source = path.join(src, relative);
+      if (isExcluded(source)) {
+        debug(`Excluding file ${source}`);
+        continue;
+      }
+      const target = path.join(dest, relative);
+      await copyFile(source, target);
+      written.push({ source, dest: target });
     }
   } else {
-    debug(`Copy ${src} to ${dest}`);
-    await fs.copy(src, dest, file.exclude !== void 0 ? { filter: filterFunc } : void 0);
+    await copyFile(src, dest);
+    written.push({ source: src, dest });
   }
-  if (deleteOrphaned) {
+  if (isDirectory && file.deleteOrphaned) {
     const srcFileList = await listFiles(src);
     const destFileList = await listFiles(dest);
     for (const destFile of destFileList) {
-      if (destFile.startsWith(".git")) return;
+      if (destFile.split(path.sep)[0] === ".git") continue;
       if (srcFileList.indexOf(destFile) === -1) {
         const filePath = path.join(dest, destFile);
         debug(`Found an orphaned file in the target repo - ${filePath}`);
-        if (file.exclude !== void 0 && file.exclude.includes(path.join(src, destFile))) {
+        if (isExcluded(path.join(src, destFile))) {
           debug(`Excluding file ${destFile}`);
         } else {
           debug(`Removing file ${destFile}`);
@@ -48955,29 +49242,24 @@ async function copy(src, dest, isDirectory, file) {
       }
     }
   }
+  return written;
 }
 async function remove(src) {
   debug(`RM: ${src}`);
   return fs.remove(src);
 }
-function arrayEquals(array1, array2) {
-  return Array.isArray(array1) && Array.isArray(array2) && array1.length === array2.length && array1.every((value, i) => value === array2[i]);
-}
 
 const {
   GITHUB_TOKEN,
-  GITHUB_SERVER_URL,
+  GITHUB_SERVER_URL: GITHUB_SERVER_URL$2,
   IS_INSTALLATION_TOKEN,
   IS_FINE_GRAINED,
   GIT_USERNAME,
-  GIT_EMAIL,
+  GIT_EMAIL: GIT_EMAIL$1,
   TMP_DIR: TMP_DIR$1,
-  COMMIT_BODY,
-  COMMIT_PREFIX: COMMIT_PREFIX$1,
-  GITHUB_REPOSITORY,
+  GITHUB_REPOSITORY: GITHUB_REPOSITORY$2,
   OVERWRITE_EXISTING_PR: OVERWRITE_EXISTING_PR$1,
   SKIP_PR: SKIP_PR$1,
-  PR_BODY,
   BRANCH_PREFIX,
   FORK: FORK$1
 } = config;
@@ -48998,6 +49280,7 @@ class Git {
       }
     });
     const octokit = new Octokit(options);
+    this.octokit = octokit;
     this.github = octokit.rest;
   }
   async initRepo(repo) {
@@ -49011,8 +49294,9 @@ class Git {
     await this.setIdentity();
     await this.getBaseBranch();
     await this.getLastCommitSha();
+    this.baseSha = this.lastCommitSha;
     if (FORK$1) {
-      const forkUrl = new URL(GITHUB_SERVER_URL);
+      const forkUrl = new URL(GITHUB_SERVER_URL$2);
       forkUrl.username = GITHUB_TOKEN;
       forkUrl.pathname = `${FORK$1}/${this.repo.name}.git`;
       await this.createFork();
@@ -49040,7 +49324,7 @@ class Git {
   }
   async setIdentity() {
     let username = GIT_USERNAME;
-    let email = GIT_EMAIL;
+    let email = GIT_EMAIL$1;
     if (email === void 0) {
       if (!IS_INSTALLATION_TOKEN) {
         const { data } = await this.github.users.getAuthenticated();
@@ -49065,7 +49349,7 @@ class Git {
     );
   }
   async createPrBranch() {
-    const prefix = BRANCH_PREFIX.replace("SOURCE_REPO_NAME", GITHUB_REPOSITORY.split("/")[1]);
+    const prefix = BRANCH_PREFIX.replace("SOURCE_REPO_NAME", GITHUB_REPOSITORY$2.split("/")[1]);
     let newBranch = path.join(prefix, this.repo.branch).replace(/\\/g, "/").replace(/\/\./g, "/");
     if (OVERWRITE_EXISTING_PR$1 === false) {
       newBranch += `-${Math.round((/* @__PURE__ */ new Date()).getTime() / 1e3)}`;
@@ -49083,46 +49367,9 @@ class Git {
       this.workingDir
     );
   }
-  isOneCommitPush() {
-    return context$1.eventName === "push" && context$1.payload.commits.length === 1;
-  }
-  originalCommitMessage() {
-    return context$1.payload.commits[0].message;
-  }
-  parseGitDiffOutput(string) {
-    return `
-${string}`.split("\ndiff --git").slice(1).reduce((resultDict, fileDiff) => {
-      const lines = fileDiff.split("\n");
-      const lastHeaderLineIndex = lines.findIndex((line) => line.startsWith("+++"));
-      if (lastHeaderLineIndex === -1) return resultDict;
-      const plainDiff = lines.slice(lastHeaderLineIndex + 1).join("\n").trim();
-      let filePath = "";
-      if (lines[lastHeaderLineIndex].startsWith("+++ b/")) {
-        filePath = lines[lastHeaderLineIndex].slice(6);
-      } else {
-        filePath = lines[lastHeaderLineIndex - 1].slice(6);
-      }
-      return { ...resultDict, [filePath]: plainDiff };
-    }, {});
-  }
-  async getChangesFromLastCommit(source) {
-    if (this.lastCommitChanges === void 0) {
-      const diff = await this.github.repos.compareCommits({
-        mediaType: {
-          format: "diff"
-        },
-        owner: context$1.payload.repository.owner.name,
-        repo: context$1.payload.repository.name,
-        base: context$1.payload.before,
-        head: context$1.payload.after
-      });
-      this.lastCommitChanges = this.parseGitDiffOutput(diff.data);
-    }
-    if (source.endsWith("/")) {
-      return Object.keys(this.lastCommitChanges).filter((filePath) => filePath.startsWith(source)).reduce((result, key) => [...result, this.lastCommitChanges[key]], []);
-    } else {
-      return this.lastCommitChanges[source] === void 0 ? [] : [this.lastCommitChanges[source]];
-    }
+  // SHA of the source repository checkout the action runs in
+  async sourceSha() {
+    return execCmd(`git rev-parse HEAD`, process.cwd());
   }
   async getLastCommitSha() {
     this.lastCommitSha = await execCmd(
@@ -49130,12 +49377,18 @@ ${string}`.split("\ndiff --git").slice(1).reduce((resultDict, fileDiff) => {
       this.workingDir
     );
   }
-  async changes(destination) {
+  // Files changed in the working tree compared to the cloned base commit, as [{ status, file }] with status A, M or D
+  async changedFiles() {
+    await execCmd(`git add -A`, this.workingDir);
     const output = await execCmd(
-      `git diff HEAD -- ${shellQuote(destination)}`,
+      `git diff --cached --name-status --no-renames ${this.baseSha}`,
       this.workingDir
     );
-    return Object.values(this.parseGitDiffOutput(output));
+    if (output === "") return [];
+    return output.split("\n").map((line) => {
+      const [status, file] = line.split("	");
+      return { status, file };
+    });
   }
   async hasChanges() {
     const statusOutput = await execCmd(
@@ -49144,13 +49397,7 @@ ${string}`.split("\ndiff --git").slice(1).reduce((resultDict, fileDiff) => {
     );
     return porcelainExports.parse(statusOutput).length !== 0;
   }
-  async commit(msg) {
-    let message = msg !== void 0 ? msg : `${COMMIT_PREFIX$1} synced file(s) with ${GITHUB_REPOSITORY}`;
-    if (COMMIT_BODY) {
-      message += `
-
-${COMMIT_BODY}`;
-    }
+  async commit(message) {
     return execCmd(
       `git commit -m ${shellQuote(message)}`,
       this.workingDir
@@ -49285,44 +49532,74 @@ ${COMMIT_BODY}`;
     this.existingPr = data[0];
     return this.existingPr;
   }
-  async setPrWarning() {
+  async listPrCommits() {
+    return this.octokit.paginate(this.github.pulls.listCommits, {
+      owner: this.repo.user,
+      repo: this.repo.name,
+      pull_number: this.existingPr.number,
+      per_page: 100
+    });
+  }
+  async listPrComments() {
+    return this.octokit.paginate(this.github.issues.listComments, {
+      owner: this.repo.user,
+      repo: this.repo.name,
+      issue_number: this.existingPr.number,
+      per_page: 100
+    });
+  }
+  async commentPr(body) {
+    await this.github.issues.createComment({
+      owner: this.repo.user,
+      repo: this.repo.name,
+      issue_number: this.existingPr.number,
+      body
+    });
+  }
+  // Closes the existing PR and deletes its branch
+  async closePr() {
     await this.github.pulls.update({
       owner: this.repo.user,
       repo: this.repo.name,
       pull_number: this.existingPr.number,
-      body: dedent(`
-				\u26A0\uFE0F This PR is being automatically resynced \u26A0\uFE0F
-
-				${this.existingPr.body}
-			`)
+      state: "closed"
     });
+    await execCmd(
+      `git push ${FORK$1 ? "fork" : this.gitUrl} --delete ${shellQuote(this.prBranch)}`,
+      this.workingDir
+    );
   }
-  async removePrWarning() {
-    await this.github.pulls.update({
-      owner: this.repo.user,
-      repo: this.repo.name,
-      pull_number: this.existingPr.number,
-      body: this.existingPr.body.replace("\u26A0\uFE0F This PR is being automatically resynced \u26A0\uFE0F", "")
-    });
+  // Fetches the head of the existing PR branch and tells whether its paths have the same content as the staged sync
+  async prHeadMatches(paths) {
+    await execCmd(
+      `git fetch -q --depth 1 ${FORK$1 ? "fork" : this.gitUrl} ${shellQuote(this.prBranch)}`,
+      this.workingDir
+    );
+    try {
+      await execCmd(
+        `git diff --cached --quiet FETCH_HEAD -- ${paths.map(shellQuote).join(" ")}`,
+        this.workingDir
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
-  async createOrUpdatePr(changedFiles, title) {
-    const body = dedent(`
-			synced local file(s) with [${GITHUB_REPOSITORY}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}).
-
-			${PR_BODY}
-
-			${changedFiles}
-
-			---
-
-			This PR was created automatically by the [file-sync-action](https://github.com/webitel/reusable-workflows/actions/file-sync-action) workflow run [#${process.env.GITHUB_RUN_ID || 0}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID || 0})
-		`);
+  // Content of a file at the fetched PR head, or undefined when it does not exist there
+  async prHeadFile(file) {
+    try {
+      return await execCmd(`git show ${shellQuote(`FETCH_HEAD:${file}`)}`, this.workingDir, false);
+    } catch {
+      return void 0;
+    }
+  }
+  async createOrUpdatePr(title, body) {
     if (this.existingPr) {
       info(`Overwriting existing PR`);
       const { data: data2 } = await this.github.pulls.update({
         owner: this.repo.user,
         repo: this.repo.name,
-        title: `${COMMIT_PREFIX$1} synced file(s) with ${GITHUB_REPOSITORY}`,
+        title,
         pull_number: this.existingPr.number,
         body
       });
@@ -49332,7 +49609,7 @@ ${COMMIT_BODY}`;
     const { data } = await this.github.pulls.create({
       owner: this.repo.user,
       repo: this.repo.name,
-      title: title === void 0 ? `${COMMIT_PREFIX$1} synced file(s) with ${GITHUB_REPOSITORY}` : title,
+      title,
       body,
       head: `${FORK$1 ? FORK$1 : this.repo.user}:${this.prBranch}`,
       base: this.baseBranch
@@ -49421,21 +49698,540 @@ ${COMMIT_BODY}`;
   }
 }
 
+const execFileAsync = promisify(execFile);
+async function git(cwd, ...args) {
+  const { stdout } = await execFileAsync("git", args, { cwd, maxBuffer: 1024 * 1024 * 4 });
+  return stdout.trim();
+}
+async function succeeds(cwd, ...args) {
+  try {
+    await git(cwd, ...args);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function sourceCommits({ cwd, anchor, paths }) {
+  const to = await git(cwd, "rev-parse", "HEAD");
+  const result = (status, commits2 = []) => ({ status, from: anchor, to, commits: commits2 });
+  if (!anchor) return result("no-anchor");
+  if (!await succeeds(cwd, "cat-file", "-e", `${anchor}^{commit}`)) {
+    const shallow = await git(cwd, "rev-parse", "--is-shallow-repository") === "true";
+    return result(shallow ? "shallow" : "unknown-anchor");
+  }
+  if (!await succeeds(cwd, "merge-base", "--is-ancestor", anchor, to)) return result("unknown-anchor");
+  if (paths.length === 0) return result("ok");
+  const output = await git(cwd, "log", "--no-merges", "--reverse", "--format=%H%x1f%s", `${anchor}..${to}`, "--", ...paths);
+  const commits = output === "" ? [] : output.split("\n").map((line) => {
+    const [sha, subject] = line.split("");
+    return { sha, subject };
+  });
+  return result("ok", commits);
+}
+function jiraKeys(subjects) {
+  const keys = [];
+  for (const subject of subjects) {
+    for (const [, group] of subject.matchAll(/\[([^\]]+)\]/g)) {
+      for (const key of group.split(",").map((k) => k.trim())) {
+        if (/^[A-Z][A-Z0-9]+-\d+$/.test(key) && !keys.includes(key)) keys.push(key);
+      }
+    }
+  }
+  return keys;
+}
+async function commitDate(cwd, sha) {
+  try {
+    return await git(cwd, "log", "-1", "--format=%cs", sha);
+  } catch {
+    return void 0;
+  }
+}
+
+const HASH = { start: "#" };
+const SLASH = { start: "//" };
+const XML = { start: "<!--", end: "-->" };
+const BY_EXTENSION = {
+  ".yml": HASH,
+  ".yaml": HASH,
+  ".sh": HASH,
+  ".bash": HASH,
+  ".py": HASH,
+  ".toml": HASH,
+  ".ini": HASH,
+  ".cfg": HASH,
+  ".conf": HASH,
+  ".properties": HASH,
+  ".go": SLASH,
+  ".js": SLASH,
+  ".mjs": SLASH,
+  ".cjs": SLASH,
+  ".ts": SLASH,
+  ".jsonc": SLASH,
+  ".xml": XML,
+  ".iml": XML,
+  ".html": XML
+};
+const BY_NAME = {
+  "Makefile": HASH,
+  "Dockerfile": HASH,
+  ".gitignore": HASH,
+  ".dockerignore": HASH,
+  ".gitattributes": HASH,
+  ".editorconfig": HASH
+};
+const MARKER = "Code generated by file-sync";
+function commentStyle(file) {
+  const name = path.basename(file);
+  if (BY_NAME[name]) return BY_NAME[name];
+  if (name.startsWith("Dockerfile.") || name.startsWith(".env")) return HASH;
+  if (path.extname(name) === ".json" && path.dirname(file).split(path.sep).includes(".vscode")) return SLASH;
+  return BY_EXTENSION[path.extname(name)];
+}
+function withHeader(content, { file, repository, source }) {
+  const style = commentStyle(file);
+  if (!style || content.includes("\0")) return content;
+  const comment = (text) => style.end ? `${style.start} ${text} ${style.end}` : `${style.start} ${text}`;
+  const header = [
+    comment(`${MARKER} from ${repository}. DO NOT EDIT.`),
+    comment(`Source: ${source}`),
+    comment("Edit the source instead; local changes are overwritten on the next sync."),
+    ""
+  ];
+  const lines = content.split("\n");
+  const at = /^(#!|<\?xml)/.test(lines[0]) ? 1 : 0;
+  if (lines[at]?.startsWith(`${style.start} ${MARKER}`)) lines.splice(at, header.length);
+  lines.splice(at, 0, ...header);
+  return lines.join("\n");
+}
+
+const ACTION_URL = "https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync";
+const short$1 = (sha) => sha.slice(0, 7);
+const description = (subject) => subject.replace(/^\w+(\([^)]*\))?(\[[^\]]*\])?!?:\s*/, "");
+const knownRange = (history) => history.status === "ok" && history.from !== void 0;
+const runLink = (runUrl) => `[#${runUrl.split("/").pop()}](${runUrl})`;
+const commitLink = (repoUrl, commit) => `- [\`${short$1(commit.sha)}\`](${repoUrl}/commit/${commit.sha}) ${commit.subject}`;
+const driftLine = (d) => `${d.dest}${d.deleted ? " (deleted)" : ""}`;
+const STATE_MARKER = /<!-- file-sync:state (\{.*\}) -->/;
+function syncSubject({ titlePrefix, repository, history }) {
+  const keys = jiraKeys(history.commits.map((c) => c.subject));
+  const header = `${titlePrefix}${keys.length > 0 ? `[${keys.join(",")}]` : ""}`;
+  let text = `sync files from ${repository}@${short$1(history.to)}`;
+  if (history.commits.length === 1) text = description(history.commits[0].subject);
+  if (history.commits.length > 1) text = `${history.commits.length} changes from ${repository}`;
+  return header ? `${header}: ${text}` : text;
+}
+function commitMessage(context) {
+  const { repository, config, runUrl, history, files } = context;
+  const source = knownRange(history) ? `${repository} ${short$1(history.from)}..${short$1(history.to)}` : `${repository}@${short$1(history.to)}`;
+  const sections = [syncSubject(context), `Source: ${source} (${config})`];
+  if (history.commits.length > 0) {
+    sections.push(["Changes:", ...history.commits.map((c) => `- ${c.subject} (${short$1(c.sha)})`)].join("\n"));
+  }
+  const fileLine = (f) => {
+    if (!f.source) return `- ${f.status} ${f.dest}`;
+    return f.status === "D" ? `- D ${f.dest} (was ${f.source})` : `- ${f.status} ${f.dest} <- ${f.source}`;
+  };
+  sections.push(["Files:", ...files.map(fileLine)].join("\n"));
+  if (context.drift?.length > 0) {
+    sections.push(["Overwritten local changes:", ...context.drift.map((d) => `- ${driftLine(d)}`)].join("\n"));
+  }
+  sections.push([
+    `Synced-From: ${repository}@${history.to}`,
+    `Sync-Config: ${config}`,
+    `Sync-Run: ${runUrl}`
+  ].join("\n"));
+  return sections.join("\n\n");
+}
+function pullRequestBody(context) {
+  const { serverUrl, repository, config, runUrl, history, files, extra } = context;
+  const repoUrl = `${serverUrl}/${repository}`;
+  const sections = [`Syncs files from [${repository}@${short$1(history.to)}](${repoUrl}/tree/${history.to}) using \`${config}\`.`];
+  if (knownRange(history) && history.commits.length > 0) {
+    sections.push([
+      `### Source changes ([${short$1(history.from)}..${short$1(history.to)}](${repoUrl}/compare/${history.from}...${history.to}))`,
+      ...history.commits.map((c) => commitLink(repoUrl, c))
+    ].join("\n"));
+  }
+  sections.push([
+    "### Files",
+    "| | File | Source |",
+    "|---|---|---|",
+    ...files.map((f) => {
+      let source = "";
+      if (f.source) source = f.status === "D" ? `\`${f.source}\` (removed) ` : `[\`${f.source}\`](${repoUrl}/blob/${history.to}/${f.source}) `;
+      return `| ${f.status} | \`${f.dest}\` | ${source}|`;
+    })
+  ].join("\n"));
+  if (context.drift?.length > 0) {
+    sections.push([
+      "### \u26A0\uFE0F Local changes overwritten",
+      "These files were changed in this repository after the last sync; this pull request restores them:",
+      ...context.drift.map((d) => `- \`${d.dest}\`${d.deleted ? " (deleted)" : ""}`)
+    ].join("\n"));
+  }
+  if (extra) sections.push(extra);
+  const state = { stream: context.stream, sourceSha: history.to, commits: history.commits.map((c) => c.sha) };
+  sections.push([
+    "---",
+    `Created by [file-sync](${ACTION_URL}), run ${runLink(runUrl)}.`,
+    "This branch is rebuilt on every sync \u2014 do not push to it.",
+    `<!-- file-sync:state ${JSON.stringify(state)} -->`
+  ].join("\n"));
+  return sections.join("\n\n");
+}
+function parseState(body) {
+  const match = body?.match(STATE_MARKER);
+  return match ? JSON.parse(match[1]) : void 0;
+}
+function journalComment({ serverUrl, repository, runUrl, history }, previous) {
+  const known = new Set(previous?.commits || []);
+  const added = history.commits.filter((c) => !known.has(c.sha));
+  if (added.length === 0) return `Updated by run ${runLink(runUrl)}: rebuilt on the current base branch, no new source commits.`;
+  const range = previous?.sourceSha ? `source \`${short$1(previous.sourceSha)}\` \u2192 \`${short$1(history.to)}\`` : `source \`${short$1(history.to)}\``;
+  return [
+    `Updated by run ${runLink(runUrl)}: ${range}.`,
+    "",
+    "New source commits:",
+    ...added.map((c) => commitLink(`${serverUrl}/${repository}`, c))
+  ].join("\n");
+}
+function closedComment({ serverUrl, repository, runUrl, history }) {
+  return `Closed by run ${runLink(runUrl)}: the target already matches [${repository}@${short$1(history.to)}](${serverUrl}/${repository}/tree/${history.to}), nothing left to sync.`;
+}
+const FOREIGN_COMMITS_MARKER = "<!-- file-sync:foreign-commits -->";
+function foreignCommitsComment({ runUrl }, commits) {
+  return [
+    `Sync skipped by run ${runLink(runUrl)}: this branch has commits that file-sync did not create, and rebuilding it would drop them:`,
+    "",
+    ...commits.map((c) => `- \`${short$1(c.sha)}\` ${c.commit.message.split("\n")[0]}`),
+    "",
+    "Move these changes to the source repository (or merge this pull request), then the next sync updates the branch again.",
+    FOREIGN_COMMITS_MARKER
+  ].join("\n");
+}
+
 const {
-  COMMIT_EACH_FILE,
-  COMMIT_PREFIX,
+  CONFIG_PATH: CONFIG_PATH$1,
+  SYNC_NAME: SYNC_NAME$1,
+  TITLE_PREFIX,
+  GITHUB_REPOSITORY: GITHUB_REPOSITORY$1,
+  GITHUB_SERVER_URL: GITHUB_SERVER_URL$1,
+  PR_BODY,
   PR_LABELS,
   ASSIGNEES,
-  DRY_RUN,
-  TMP_DIR,
-  SKIP_CLEANUP,
-  OVERWRITE_EXISTING_PR,
-  SKIP_PR,
-  ORIGINAL_MESSAGE,
-  COMMIT_AS_PR_TITLE,
-  FORK,
   REVIEWERS,
   TEAM_REVIEWERS,
+  DRY_RUN: DRY_RUN$1,
+  OVERWRITE_EXISTING_PR,
+  SKIP_PR,
+  FORK,
+  GIT_EMAIL,
+  ON_DRIFT,
+  DELETE_REMOVED,
+  FILE_HEADER
+} = config;
+const runUrl = () => `${GITHUB_SERVER_URL$1}/${GITHUB_REPOSITORY$1}/actions/runs/${process.env.GITHUB_RUN_ID || 0}`;
+async function syncFiles(git, files) {
+  const managed = [];
+  const retained = [];
+  await forEach(files, async (file) => {
+    if (fs$2.existsSync(file.source) === false) {
+      retained.push(path.normalize(file.dest));
+      return warning(`Source ${file.source} not found`);
+    }
+    if (file.replace === false) retained.push(path.normalize(file.dest));
+    const localDestination = `${git.workingDir}/${file.dest}`;
+    if (fs$2.existsSync(localDestination) && file.replace === false) return warning(`File(s) already exist(s) in destination and 'replace' option is set to false`);
+    const isDirectory = await pathIsDirectory(file.source);
+    const source = isDirectory ? addTrailingSlash(file.source) : file.source;
+    const dest = isDirectory ? addTrailingSlash(localDestination) : localDestination;
+    if (isDirectory) info(`Source is directory`);
+    const written = await copy(source, dest, isDirectory, file);
+    if (FILE_HEADER && file.header) {
+      for (const { source: sourceFile, dest: destFile } of written) {
+        const content = await fs$2.promises.readFile(destFile, "utf8");
+        const marked = withHeader(content, { file: path.relative(git.workingDir, destFile), repository: GITHUB_REPOSITORY$1, source: path.normalize(sourceFile) });
+        if (marked !== content) await fs$2.promises.writeFile(destFile, marked);
+      }
+    }
+    if (file.replace !== false) managed.push(...written);
+    await git.add(file.dest);
+  });
+  return { managed, retained };
+}
+async function deleteRemoved(git, previousManifest, manifestFiles, retained) {
+  const isRetained = (dest) => retained.some((r) => dest === r || dest.startsWith(addTrailingSlash(r)));
+  for (const dest of Object.keys(previousManifest?.files || {})) {
+    if (manifestFiles[dest] !== void 0 || isRetained(dest)) continue;
+    info(`Deleting ${dest}: no longer in the sync config`);
+    await fs$2.promises.rm(path.join(git.workingDir, dest), { force: true });
+  }
+}
+async function manifestEntries(git, managed) {
+  const entries = {};
+  for (const file of managed) {
+    entries[path.relative(git.workingDir, file.dest)] = {
+      source: path.normalize(file.source),
+      sha256: sha256(await fs$2.promises.readFile(file.dest))
+    };
+  }
+  return entries;
+}
+async function openPrMatches(git, { files, manifestFile, manifestFiles, previousManifest }) {
+  const paths = /* @__PURE__ */ new Set([
+    ...files.map((f) => f.dest),
+    ...Object.keys(manifestFiles),
+    ...Object.keys(previousManifest?.files || {})
+  ]);
+  paths.delete(manifestFile);
+  if (!await git.prHeadMatches([...paths])) return false;
+  const prManifest = await git.prHeadFile(manifestFile);
+  return prManifest !== void 0 && sameFiles(parseManifest(prManifest).files, manifestFiles);
+}
+async function decoratePullRequest(git) {
+  if (FORK) return;
+  if (PR_LABELS !== void 0 && PR_LABELS.length > 0) {
+    info(`Adding label(s) "${PR_LABELS.join(", ")}" to PR`);
+    await git.addPrLabels(PR_LABELS);
+  }
+  if (ASSIGNEES !== void 0 && ASSIGNEES.length > 0) {
+    info(`Adding assignee(s) "${ASSIGNEES.join(", ")}" to PR`);
+    await git.addPrAssignees(ASSIGNEES);
+  }
+  if (REVIEWERS !== void 0 && REVIEWERS.length > 0) {
+    info(`Adding reviewer(s) "${REVIEWERS.join(", ")}" to PR`);
+    await git.addPrReviewers(REVIEWERS);
+  }
+  if (TEAM_REVIEWERS !== void 0 && TEAM_REVIEWERS.length > 0) {
+    info(`Adding team reviewer(s) "${TEAM_REVIEWERS.join(", ")}" to PR`);
+    await git.addPrTeamReviewers(TEAM_REVIEWERS);
+  }
+}
+function isOwnCommit(commit, pullRequest) {
+  if (/^Synced-From: /m.test(commit.commit.message)) return true;
+  if (pullRequest.user?.login && commit.author?.login === pullRequest.user.login) return true;
+  return Boolean(GIT_EMAIL) && commit.commit.author?.email === GIT_EMAIL;
+}
+async function guardForeignCommits(git, pullRequest) {
+  const foreign = (await git.listPrCommits()).filter((commit) => !isOwnCommit(commit, pullRequest));
+  if (foreign.length === 0) return false;
+  warning(`PR #${pullRequest.number} has commits that file-sync did not create; skipping ${git.repo.fullName}`);
+  if (DRY_RUN$1 === false) {
+    const comments = await git.listPrComments();
+    if (!comments.some((comment) => comment.body?.includes(FOREIGN_COMMITS_MARKER))) {
+      await git.commentPr(foreignCommitsComment({ runUrl: runUrl() }, foreign));
+    }
+  }
+  return true;
+}
+async function syncRepository(git, item) {
+  await git.initRepo(item.repo);
+  const manifestFile = manifestPath(SYNC_NAME$1);
+  const previousManifest = await readManifest(path.join(git.workingDir, manifestFile));
+  const syncedSha = previousManifest?.source.sha;
+  let existingPr;
+  if (SKIP_PR === false) {
+    await git.createPrBranch();
+    existingPr = OVERWRITE_EXISTING_PR ? await git.findExistingPr() : void 0;
+    if (existingPr) {
+      info(`Found existing PR ${existingPr.number}`);
+      if (await guardForeignCommits(git, existingPr)) return { status: "skipped", pullRequest: existingPr, syncedSha };
+    }
+  }
+  const drift = previousManifest ? await findDrift(git.workingDir, previousManifest) : [];
+  const repoName = `${item.repo.user}/${item.repo.name}`;
+  if (drift.length > 0 && ON_DRIFT === "fail") {
+    throw new Error(`${repoName}: ${drift.map((d) => d.dest).join(", ")} was changed after the last sync and ON_DRIFT is fail`);
+  }
+  for (const d of drift) {
+    warning(`${d.dest} was ${d.deleted ? "deleted" : "changed"} in ${repoName} after the last sync; the sync overwrites it`);
+  }
+  info(`Locally syncing file(s) between source and target repository`);
+  const { managed, retained } = await syncFiles(git, item.files);
+  const manifestFiles = await manifestEntries(git, managed);
+  if (DELETE_REMOVED) await deleteRemoved(git, previousManifest, manifestFiles, retained);
+  for (const conflict of await findOwnershipConflicts(git.workingDir, SYNC_NAME$1, Object.keys(manifestFiles))) {
+    warning(`${conflict.dest} is also managed by the "${conflict.stream}" sync stream`);
+  }
+  const fileChanges = (await git.changedFiles()).filter(({ file }) => file !== manifestFile);
+  if (fileChanges.length === 0 && previousManifest !== void 0 && sameFiles(previousManifest.files, manifestFiles)) {
+    info("File(s) already up to date");
+    if (!existingPr) return { status: "up-to-date", drift: drift.length, syncedSha };
+    info(`Closing PR #${existingPr.number}: nothing left to sync`);
+    if (DRY_RUN$1 === false) {
+      const history2 = { to: await git.sourceSha()};
+      await git.commentPr(closedComment({ serverUrl: GITHUB_SERVER_URL$1, repository: GITHUB_REPOSITORY$1, runUrl: runUrl(), history: history2 }));
+      await git.closePr();
+    }
+    return { status: "closed", pullRequest: existingPr, drift: drift.length, syncedSha };
+  }
+  await fs$2.promises.mkdir(path.dirname(path.join(git.workingDir, manifestFile)), { recursive: true });
+  await fs$2.promises.writeFile(path.join(git.workingDir, manifestFile), serializeManifest({
+    name: SYNC_NAME$1,
+    repository: GITHUB_REPOSITORY$1,
+    config: path.normalize(CONFIG_PATH$1),
+    sha: await git.sourceSha(),
+    files: manifestFiles
+  }));
+  await git.add(manifestFile);
+  const changes = fileChanges.length > 0 ? fileChanges : await git.changedFiles();
+  const sourceOf = (file) => manifestFiles[file]?.source || previousManifest?.files[file]?.source;
+  const files = changes.map(({ status, file }) => ({ status, dest: file, source: sourceOf(file) }));
+  const sources = [...new Set(files.map((f) => f.source).filter(Boolean))];
+  const history = await sourceCommits({
+    cwd: process.cwd(),
+    anchor: previousManifest?.source.sha,
+    paths: sources.length > 0 ? [path.normalize(CONFIG_PATH$1), ...sources] : []
+  });
+  if (history.status === "shallow") {
+    warning("The source checkout is shallow; check it out with fetch-depth: 0 to list source commits");
+  }
+  const context = {
+    titlePrefix: TITLE_PREFIX,
+    serverUrl: GITHUB_SERVER_URL$1,
+    repository: GITHUB_REPOSITORY$1,
+    config: path.normalize(CONFIG_PATH$1),
+    runUrl: runUrl(),
+    history,
+    files,
+    stream: SYNC_NAME$1,
+    drift,
+    extra: PR_BODY
+  };
+  const message = commitMessage(context);
+  if (existingPr && await openPrMatches(git, { files, manifestFile, manifestFiles, previousManifest })) {
+    info(`PR #${existingPr.number} already contains these changes`);
+    return { status: "unchanged", pullRequest: existingPr, drift: drift.length, syncedSha };
+  }
+  if (DRY_RUN$1) {
+    warning("Dry run, no changes will be pushed");
+    info(`Commit message:
+${message}`);
+    if (SKIP_PR === false) info(`Pull request body:
+${pullRequestBody(context)}`);
+    return { status: "dry-run", drift: drift.length, syncedSha };
+  }
+  await git.commit(message);
+  info(`Pushing changes to target repository`);
+  await git.push();
+  if (SKIP_PR) return { status: "pushed", drift: drift.length, syncedSha: history.to };
+  const previousState = parseState(existingPr?.body);
+  const pullRequest = await git.createOrUpdatePr(syncSubject(context), pullRequestBody(context));
+  notice(`Pull Request #${pullRequest.number} created/updated: ${pullRequest.html_url}`);
+  if (existingPr) await git.commentPr(journalComment(context, previousState));
+  await decoratePullRequest(git);
+  return { status: existingPr ? "updated" : "created", pullRequest, drift: drift.length, syncedSha };
+}
+
+const LABELS = {
+  "created": "\u{1F195} created",
+  "updated": "\u{1F504} updated",
+  "unchanged": "\u23F8\uFE0F unchanged",
+  "up-to-date": "\u2705 up to date",
+  "closed": "\u2716\uFE0F closed",
+  "skipped": "\u26A0\uFE0F skipped",
+  "pushed": "\u2B06\uFE0F pushed",
+  "dry-run": "\u{1F9EA} dry run",
+  "failed": "\u274C failed"
+};
+const cell = (text) => String(text).replace(/\|/g, "\\|").replace(/\n/g, " ");
+function summaryMarkdown(stream, results) {
+  const rows = results.map((r) => {
+    const result = r.error ? `${LABELS[r.status]}: ${cell(r.error)}` : LABELS[r.status] || r.status;
+    const pr = r.pullRequest ? `[#${r.pullRequest.split("/").pop()}](${r.pullRequest})` : "";
+    return `| ${r.repository} | ${result} | ${pr} | ${r.drift || ""} |`;
+  });
+  return [
+    `### file-sync: ${stream}`,
+    "",
+    "| Repository | Result | Pull request | Drift |",
+    "|---|---|---|---|",
+    ...rows,
+    ""
+  ].join("\n");
+}
+
+const STATUS_ISSUE_MARKER = "<!-- file-sync:status -->";
+const streamMarker = (stream) => `<!-- file-sync:status stream=${stream} -->`;
+const STALE_DAYS = 7;
+const short = (sha) => sha.slice(0, 7);
+const day = (iso) => iso.slice(0, 10);
+const prLink = (r) => `[#${r.pullRequestNumber}](${r.pullRequest})`;
+function attention(result, now) {
+  const { repository: repo } = result;
+  if (result.status === "failed") return `\u274C ${repo}: ${cell(result.error)}`;
+  if (result.status === "skipped") return `\u26D4 ${repo}: ${prLink(result)} has commits file-sync did not create`;
+  if (result.drift > 0) {
+    const where = result.pullRequest ? ` in ${prLink(result)}` : "";
+    return `\u26A0\uFE0F ${repo}: ${result.drift} local change${result.drift > 1 ? "s" : ""} overwritten${where}`;
+  }
+  if (result.pullRequestCreatedAt && now - new Date(result.pullRequestCreatedAt) > STALE_DAYS * 24 * 3600 * 1e3) {
+    return `\u{1F552} ${repo}: ${prLink(result)} open since ${day(result.pullRequestCreatedAt)}`;
+  }
+  return void 0;
+}
+function statusComment(context, results) {
+  const { stream, config, serverUrl, repository, runUrl, sourceSha, now } = context;
+  const repoUrl = `${serverUrl}/${repository}`;
+  const time = now.toISOString().replace("T", " ").slice(0, 16);
+  const lines = [
+    `### ${stream} \xB7 \`${config}\``,
+    `Updated by run [#${runUrl.split("/").pop()}](${runUrl}) at ${time} UTC from [\`${short(sourceSha)}\`](${repoUrl}/tree/${sourceSha}).`,
+    ""
+  ];
+  const items = [...results.filter((r) => r.status !== "failed"), ...results.filter((r) => r.status === "failed")].map((r) => attention(r, now)).filter(Boolean);
+  if (items.length > 0) lines.push("**Needs attention**", ...items.map((item) => `- ${item}`), "");
+  lines.push("| Repository | Synced to | Pull request | Result |", "|---|---|---|---|");
+  for (const r of results) {
+    const synced = r.syncedSha ? `[\`${short(r.syncedSha)}\`](${repoUrl}/commit/${r.syncedSha})${r.syncedAt ? ` \xB7 ${r.syncedAt}` : ""}` : "\u2014";
+    const pr = r.pullRequest ? `${prLink(r)} \xB7 since ${day(r.pullRequestCreatedAt)}` : "";
+    lines.push(`| ${r.repository} | ${synced} | ${pr} | ${LABELS[r.status] || r.status} |`);
+  }
+  lines.push("", streamMarker(stream));
+  return lines.join("\n");
+}
+function issueBody(repository) {
+  return [
+    `Status of the files synced from ${repository} by [file-sync](https://github.com/webitel/reusable-workflows/tree/main/actions/file-sync).`,
+    "",
+    "Every sync stream keeps its own comment below up to date on each run.",
+    "",
+    `Results: ${Object.values(LABELS).join(" \xB7 ")}`,
+    "",
+    STATUS_ISSUE_MARKER
+  ].join("\n");
+}
+async function publishStatus({ octokit, owner, repo, title, stream, comment }) {
+  const issues = await octokit.paginate(octokit.rest.issues.listForRepo, { owner, repo, state: "open", per_page: 100 });
+  let issue = issues.find((i) => !i.pull_request && i.body?.includes(STATUS_ISSUE_MARKER));
+  if (!issue) {
+    info(`Creating status issue "${title}"`);
+    issue = (await octokit.rest.issues.create({ owner, repo, title, body: issueBody(`${owner}/${repo}`) })).data;
+    try {
+      await octokit.graphql("mutation($id: ID!) { pinIssue(input: { issueId: $id }) { issue { id } } }", { id: issue.node_id });
+    } catch (err) {
+      warning(`Could not pin status issue #${issue.number}, pin it manually: ${err.message}`);
+    }
+  }
+  const comments = await octokit.paginate(octokit.rest.issues.listComments, { owner, repo, issue_number: issue.number, per_page: 100 });
+  const existing = comments.find((c) => c.body?.includes(streamMarker(stream)));
+  if (existing) {
+    await octokit.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: comment });
+  } else {
+    await octokit.rest.issues.createComment({ owner, repo, issue_number: issue.number, body: comment });
+  }
+  return issue;
+}
+
+const {
+  SYNC_NAME,
+  CONFIG_PATH,
+  STATUS_ISSUE,
+  DRY_RUN,
+  GITHUB_REPOSITORY,
+  GITHUB_SERVER_URL,
+  TMP_DIR,
+  SKIP_CLEANUP,
   NUNJUCKS_BLOCK_START,
   NUNJUCKS_BLOCK_END,
   NUNJUCKS_VARIABLE_START,
@@ -49458,6 +50254,7 @@ async function run() {
   const git = new Git();
   const repos = await parseConfig();
   const prUrls = [];
+  const results = [];
   await forEach(repos, async (item) => {
     info(`Repository Info`);
     info(`Slug		: ${item.repo.name}`);
@@ -49465,124 +50262,54 @@ async function run() {
     info(`Https Url	: https://${item.repo.fullName}`);
     info(`Branch		: ${item.repo.branch}`);
     info("	");
+    const repository = `${item.repo.user}/${item.repo.name}${item.repo.branch === "default" ? "" : `@${item.repo.branch}`}`;
     try {
-      await git.initRepo(item.repo);
-      let existingPr;
-      if (SKIP_PR === false) {
-        await git.createPrBranch();
-        existingPr = OVERWRITE_EXISTING_PR ? await git.findExistingPr() : void 0;
-        if (existingPr && DRY_RUN === false) {
-          info(`Found existing PR ${existingPr.number}`);
-          await git.setPrWarning();
-        }
-      }
-      info(`Locally syncing file(s) between source and target repository`);
-      const modified = [];
-      await forEach(item.files, async (file) => {
-        const fileExists = fs$2.existsSync(file.source);
-        if (fileExists === false) return warning(`Source ${file.source} not found`);
-        const localDestination = `${git.workingDir}/${file.dest}`;
-        const destExists = fs$2.existsSync(localDestination);
-        if (destExists === true && file.replace === false) return warning(`File(s) already exist(s) in destination and 'replace' option is set to false`);
-        const isDirectory = await pathIsDirectory(file.source);
-        const source = isDirectory ? `${addTrailingSlash(file.source)}` : file.source;
-        const dest = isDirectory ? `${addTrailingSlash(localDestination)}` : localDestination;
-        if (isDirectory) info(`Source is directory`);
-        await copy(source, dest, isDirectory, file);
-        await git.add(file.dest);
-        if (COMMIT_EACH_FILE === true) {
-          const hasChanges2 = await git.hasChanges();
-          if (hasChanges2 === false) return debug("File(s) already up to date");
-          debug(`Creating commit for file(s) ${file.dest}`);
-          const directory = isDirectory ? "directory" : "";
-          const otherFiles = isDirectory ? "and copied all sub files/folders" : "";
-          const useOriginalCommitMessage = ORIGINAL_MESSAGE && git.isOneCommitPush() && arrayEquals(await git.getChangesFromLastCommit(file.source), await git.changes(file.dest));
-          const message = {
-            true: {
-              commit: useOriginalCommitMessage ? git.originalCommitMessage() : `${COMMIT_PREFIX} synced local '${file.dest}' with remote '${file.source}'`,
-              pr: `synced local ${directory} <code>${file.dest}</code> with remote ${directory} <code>${file.source}</code>`
-            },
-            false: {
-              commit: useOriginalCommitMessage ? git.originalCommitMessage() : `${COMMIT_PREFIX} created local '${file.dest}' from remote '${file.source}'`,
-              pr: `created local ${directory} <code>${file.dest}</code> ${otherFiles} from remote ${directory} <code>${file.source}</code>`
-            }
-          };
-          await git.commit(message[destExists].commit);
-          modified.push({
-            dest: file.dest,
-            source: file.source,
-            message: message[destExists].pr,
-            useOriginalMessage: useOriginalCommitMessage,
-            commitMessage: message[destExists].commit
-          });
-        }
+      const result = await syncRepository(git, item);
+      if (["created", "updated"].includes(result.status)) prUrls.push(result.pullRequest.html_url);
+      results.push({
+        repository,
+        status: result.status,
+        pullRequest: result.pullRequest?.html_url,
+        pullRequestNumber: result.pullRequest?.number,
+        pullRequestCreatedAt: result.pullRequest?.created_at,
+        drift: result.drift || 0,
+        syncedSha: result.syncedSha,
+        syncedAt: result.syncedSha ? await commitDate(process.cwd(), result.syncedSha) : void 0
       });
-      if (DRY_RUN) {
-        warning("Dry run, no changes will be pushed");
-        debug("Git Status:");
-        debug(await git.status());
-        return;
-      }
-      const hasChanges = await git.hasChanges();
-      if (hasChanges === false && modified.length < 1) {
-        info("File(s) already up to date");
-        if (existingPr) await git.removePrWarning();
-        return;
-      }
-      if (hasChanges === true) {
-        debug(`Creating commit for remaining files`);
-        let useOriginalCommitMessage = ORIGINAL_MESSAGE && git.isOneCommitPush();
-        if (useOriginalCommitMessage) {
-          await forEach(item.files, async (file) => {
-            useOriginalCommitMessage = useOriginalCommitMessage && arrayEquals(await git.getChangesFromLastCommit(file.source), await git.changes(file.dest));
-          });
-        }
-        const commitMessage = useOriginalCommitMessage ? git.originalCommitMessage() : void 0;
-        await git.commit(commitMessage);
-        modified.push({
-          dest: git.workingDir,
-          useOriginalMessage: useOriginalCommitMessage,
-          commitMessage
-        });
-      }
-      info(`Pushing changes to target repository`);
-      await git.push();
-      if (SKIP_PR === false) {
-        const changedFiles = dedent(`
-					<details>
-					<summary>Changed files</summary>
-					<ul>
-					${modified.map((file) => `<li>${file.message}</li>`).join("")}
-					</ul>
-					</details>
-				`);
-        const useCommitAsPRTitle = COMMIT_AS_PR_TITLE && modified.length === 1 && modified[0].useOriginalMessage;
-        const pullRequest = await git.createOrUpdatePr(COMMIT_EACH_FILE ? changedFiles : "", useCommitAsPRTitle ? modified[0].commitMessage.split("\n", 1)[0].trim() : void 0);
-        notice(`Pull Request #${pullRequest.number} created/updated: ${pullRequest.html_url}`);
-        prUrls.push(pullRequest.html_url);
-        if (PR_LABELS !== void 0 && PR_LABELS.length > 0 && !FORK) {
-          info(`Adding label(s) "${PR_LABELS.join(", ")}" to PR`);
-          await git.addPrLabels(PR_LABELS);
-        }
-        if (ASSIGNEES !== void 0 && ASSIGNEES.length > 0 && !FORK) {
-          info(`Adding assignee(s) "${ASSIGNEES.join(", ")}" to PR`);
-          await git.addPrAssignees(ASSIGNEES);
-        }
-        if (REVIEWERS !== void 0 && REVIEWERS.length > 0 && !FORK) {
-          info(`Adding reviewer(s) "${REVIEWERS.join(", ")}" to PR`);
-          await git.addPrReviewers(REVIEWERS);
-        }
-        if (TEAM_REVIEWERS !== void 0 && TEAM_REVIEWERS.length > 0 && !FORK) {
-          info(`Adding team reviewer(s) "${TEAM_REVIEWERS.join(", ")}" to PR`);
-          await git.addPrTeamReviewers(TEAM_REVIEWERS);
-        }
-      }
       info("	");
     } catch (err) {
+      results.push({ repository, status: "failed", error: err.message, drift: 0 });
       setFailed(err.message);
       debug(err);
     }
   });
+  setOutput("results", results);
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    await summary.addRaw(summaryMarkdown(SYNC_NAME, results), true).write();
+  }
+  if (STATUS_ISSUE) {
+    try {
+      const [owner, repo] = GITHUB_REPOSITORY.split("/");
+      const comment = statusComment({
+        stream: SYNC_NAME,
+        config: path.normalize(CONFIG_PATH),
+        serverUrl: GITHUB_SERVER_URL,
+        repository: GITHUB_REPOSITORY,
+        runUrl: `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID || 0}`,
+        sourceSha: await git.sourceSha(),
+        now: /* @__PURE__ */ new Date()
+      }, results);
+      if (DRY_RUN) {
+        info(`Status comment:
+${comment}`);
+      } else {
+        const issue = await publishStatus({ octokit: git.octokit, owner, repo, title: STATUS_ISSUE, stream: SYNC_NAME, comment });
+        info(`Status published to ${GITHUB_REPOSITORY}#${issue.number}`);
+      }
+    } catch (err) {
+      warning(`Could not update the status issue: ${err.message}`);
+    }
+  }
   if (prUrls) {
     setOutput("pull_request_urls", prUrls);
   }
