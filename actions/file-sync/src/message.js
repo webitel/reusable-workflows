@@ -13,6 +13,8 @@ const runLink = (runUrl) => `[#${ runUrl.split('/').pop() }](${ runUrl })`
 
 const commitLink = (repoUrl, commit) => `- [\`${ short(commit.sha) }\`](${ repoUrl }/commit/${ commit.sha }) ${ commit.subject }`
 
+const driftLine = (d) => `${ d.dest }${ d.deleted ? ' (deleted)' : '' }`
+
 const STATE_MARKER = /<!-- file-sync:state (\{.*\}) -->/
 
 /**
@@ -25,6 +27,7 @@ const STATE_MARKER = /<!-- file-sync:state (\{.*\}) -->/
  *   history      - result of sourceCommits()
  *   files        - changed files, [{ status: A|M|D, dest, source }]
  *   stream       - sync stream name, stored in the pull request state marker
+ *   drift        - managed files changed in the target since the last sync, [{ dest, deleted }]
  */
 export function syncSubject({ titlePrefix, repository, history }) {
     const keys = jiraKeys(history.commits.map((c) => c.subject))
@@ -48,6 +51,9 @@ export function commitMessage(context) {
         sections.push([ 'Changes:', ...history.commits.map((c) => `- ${ c.subject } (${ short(c.sha) })`) ].join('\n'))
     }
     sections.push([ 'Files:', ...files.map((f) => `- ${ f.status } ${ f.dest }${ f.source ? ` <- ${ f.source }` : '' }`) ].join('\n'))
+    if (context.drift?.length > 0) {
+        sections.push([ 'Overwritten local changes:', ...context.drift.map((d) => `- ${ driftLine(d) }`) ].join('\n'))
+    }
     sections.push([
         `Synced-From: ${ repository }@${ history.to }`,
         `Sync-Config: ${ config }`,
@@ -76,6 +82,14 @@ export function pullRequestBody(context) {
         '|---|---|---|',
         ...files.map((f) => `| ${ f.status } | \`${ f.dest }\` | ${ f.source ? `[\`${ f.source }\`](${ repoUrl }/blob/${ history.to }/${ f.source }) ` : '' }|`)
     ].join('\n'))
+
+    if (context.drift?.length > 0) {
+        sections.push([
+            '### ⚠️ Local changes overwritten',
+            'These files were changed in this repository after the last sync; this pull request restores them:',
+            ...context.drift.map((d) => `- \`${ d.dest }\`${ d.deleted ? ' (deleted)' : '' }`)
+        ].join('\n'))
+    }
 
     if (extra) sections.push(extra)
 

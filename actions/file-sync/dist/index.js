@@ -42230,6 +42230,18 @@ async function findOwnershipConflicts(repoDir, name, destFiles) {
   }
   return conflicts;
 }
+async function findDrift(repoDir, manifest) {
+  const drift = [];
+  for (const dest of Object.keys(manifest.files).sort()) {
+    const file = path.join(repoDir, dest);
+    if (!await fs.pathExists(file)) {
+      drift.push({ dest, deleted: true });
+    } else if (sha256(await fs.readFile(file)) !== manifest.files[dest].sha256) {
+      drift.push({ dest, deleted: false });
+    }
+  }
+  return drift;
+}
 
 const REPLACE_DEFAULT = true;
 const TEMPLATE_DEFAULT = false;
@@ -42354,6 +42366,13 @@ try {
       disableable: true
     })
   };
+  context.ON_DRIFT = libExports.getInput({
+    key: "ON_DRIFT",
+    default: "warn"
+  });
+  if (!["warn", "fail"].includes(context.ON_DRIFT)) {
+    throw new Error(`ON_DRIFT must be warn or fail, got ${context.ON_DRIFT}`);
+  }
   context.SYNC_NAME = libExports.getInput({
     key: "SYNC_NAME",
     default: manifestName(context.CONFIG_PATH)
@@ -49459,6 +49478,7 @@ const description = (subject) => subject.replace(/^\w+(\([^)]*\))?(\[[^\]]*\])?!
 const knownRange = (history) => history.status === "ok" && history.from !== void 0;
 const runLink = (runUrl) => `[#${runUrl.split("/").pop()}](${runUrl})`;
 const commitLink = (repoUrl, commit) => `- [\`${short(commit.sha)}\`](${repoUrl}/commit/${commit.sha}) ${commit.subject}`;
+const driftLine = (d) => `${d.dest}${d.deleted ? " (deleted)" : ""}`;
 const STATE_MARKER = /<!-- file-sync:state (\{.*\}) -->/;
 function syncSubject({ titlePrefix, repository, history }) {
   const keys = jiraKeys(history.commits.map((c) => c.subject));
@@ -49476,6 +49496,9 @@ function commitMessage(context) {
     sections.push(["Changes:", ...history.commits.map((c) => `- ${c.subject} (${short(c.sha)})`)].join("\n"));
   }
   sections.push(["Files:", ...files.map((f) => `- ${f.status} ${f.dest}${f.source ? ` <- ${f.source}` : ""}`)].join("\n"));
+  if (context.drift?.length > 0) {
+    sections.push(["Overwritten local changes:", ...context.drift.map((d) => `- ${driftLine(d)}`)].join("\n"));
+  }
   sections.push([
     `Synced-From: ${repository}@${history.to}`,
     `Sync-Config: ${config}`,
@@ -49499,6 +49522,13 @@ function pullRequestBody(context) {
     "|---|---|---|",
     ...files.map((f) => `| ${f.status} | \`${f.dest}\` | ${f.source ? `[\`${f.source}\`](${repoUrl}/blob/${history.to}/${f.source}) ` : ""}|`)
   ].join("\n"));
+  if (context.drift?.length > 0) {
+    sections.push([
+      "### \u26A0\uFE0F Local changes overwritten",
+      "These files were changed in this repository after the last sync; this pull request restores them:",
+      ...context.drift.map((d) => `- \`${d.dest}\`${d.deleted ? " (deleted)" : ""}`)
+    ].join("\n"));
+  }
   if (extra) sections.push(extra);
   const state = { stream: context.stream, sourceSha: history.to, commits: history.commits.map((c) => c.sha) };
   sections.push([
@@ -49555,7 +49585,8 @@ const {
   OVERWRITE_EXISTING_PR,
   SKIP_PR,
   FORK,
-  GIT_EMAIL
+  GIT_EMAIL,
+  ON_DRIFT
 } = config;
 const runUrl = () => `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID || 0}`;
 async function syncFiles(git, files) {
@@ -49644,6 +49675,14 @@ async function syncRepository(git, item) {
   }
   const manifestFile = manifestPath(SYNC_NAME);
   const previousManifest = await readManifest(path.join(git.workingDir, manifestFile));
+  const drift = previousManifest ? await findDrift(git.workingDir, previousManifest) : [];
+  const repoName = `${item.repo.user}/${item.repo.name}`;
+  if (drift.length > 0 && ON_DRIFT === "fail") {
+    throw new Error(`${repoName}: ${drift.map((d) => d.dest).join(", ")} was changed after the last sync and ON_DRIFT is fail`);
+  }
+  for (const d of drift) {
+    warning(`${d.dest} was ${d.deleted ? "deleted" : "changed"} in ${repoName} after the last sync; the sync overwrites it`);
+  }
   info(`Locally syncing file(s) between source and target repository`);
   const managed = await syncFiles(git, item.files);
   const manifestFiles = await manifestEntries(git, managed);
@@ -49692,6 +49731,7 @@ async function syncRepository(git, item) {
     history,
     files,
     stream: SYNC_NAME,
+    drift,
     extra: PR_BODY
   };
   const message = commitMessage(context);

@@ -12,7 +12,8 @@ import {
     parseManifest,
     readManifest,
     sameFiles,
-    findOwnershipConflicts
+    findOwnershipConflicts,
+    findDrift
 } from '../src/manifest.js'
 
 test('manifestName derives the stream name from the config path', () => {
@@ -85,4 +86,18 @@ test('findOwnershipConflicts reports files listed in manifests of other streams'
     const conflicts = await findOwnershipConflicts(repo, 'golang-sync', [ 'a.yml', 'b.yml' ])
 
     assert.deepEqual(conflicts, [ { dest: 'a.yml', stream: 'golang-sync-static' } ])
+})
+
+test('findDrift lists managed files whose content differs from the manifest or that were deleted', async () => {
+    const repo = await fs.mkdtemp(path.join(os.tmpdir(), 'file-sync-test-'))
+    await fs.outputFile(path.join(repo, 'same.yml'), 'same')
+    await fs.outputFile(path.join(repo, 'edited.yml'), 'local')
+
+    const drift = await findDrift(repo, { files: {
+        'same.yml': { source: 's', sha256: sha256('same') },
+        'edited.yml': { source: 's', sha256: sha256('synced') },
+        'gone.yml': { source: 's', sha256: sha256('synced') }
+    } })
+
+    assert.deepEqual(drift, [ { dest: 'edited.yml', deleted: false }, { dest: 'gone.yml', deleted: true } ])
 })

@@ -4,7 +4,7 @@ import * as path from 'path'
 
 import config from './config.js'
 import { forEach, addTrailingSlash, pathIsDirectory, copy } from './helpers.js'
-import { manifestPath, readManifest, parseManifest, serializeManifest, sameFiles, sha256, findOwnershipConflicts } from './manifest.js'
+import { manifestPath, readManifest, parseManifest, serializeManifest, sameFiles, sha256, findOwnershipConflicts, findDrift } from './manifest.js'
 import { sourceCommits } from './history.js'
 import { syncSubject, commitMessage, pullRequestBody, parseState, journalComment, closedComment, foreignCommitsComment, FOREIGN_COMMITS_MARKER } from './message.js'
 
@@ -23,7 +23,8 @@ const {
     OVERWRITE_EXISTING_PR,
     SKIP_PR,
     FORK,
-    GIT_EMAIL
+    GIT_EMAIL,
+    ON_DRIFT
 } = config
 
 const runUrl = () => `${ GITHUB_SERVER_URL }/${ GITHUB_REPOSITORY }/actions/runs/${ process.env.GITHUB_RUN_ID || 0 }`
@@ -151,6 +152,16 @@ export async function syncRepository(git, item) {
     const manifestFile = manifestPath(SYNC_NAME)
     const previousManifest = await readManifest(path.join(git.workingDir, manifestFile))
 
+    // Local edits of managed files are overwritten by the sync: report them, or refuse with ON_DRIFT=fail
+    const drift = previousManifest ? await findDrift(git.workingDir, previousManifest) : []
+    const repoName = `${ item.repo.user }/${ item.repo.name }`
+    if (drift.length > 0 && ON_DRIFT === 'fail') {
+        throw new Error(`${ repoName }: ${ drift.map((d) => d.dest).join(', ') } was changed after the last sync and ON_DRIFT is fail`)
+    }
+    for (const d of drift) {
+        core.warning(`${ d.dest } was ${ d.deleted ? 'deleted' : 'changed' } in ${ repoName } after the last sync; the sync overwrites it`)
+    }
+
     core.info(`Locally syncing file(s) between source and target repository`)
     const managed = await syncFiles(git, item.files)
     const manifestFiles = await manifestEntries(git, managed)
@@ -209,6 +220,7 @@ export async function syncRepository(git, item) {
         history,
         files,
         stream: SYNC_NAME,
+        drift,
         extra: PR_BODY
     }
     const message = commitMessage(context)

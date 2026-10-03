@@ -122,3 +122,22 @@ test('closed comment names the source commit the target already matches', () => 
     assert.equal(closedComment({ ...base, history: none }),
         'Closed by run [#42](https://github.com/webitel/reusable-configs/actions/runs/42): the target already matches [webitel/reusable-configs@1a2b3c4](https://github.com/webitel/reusable-configs/tree/1a2b3c4000000000000000000000000000000000), nothing left to sync.')
 })
+
+const drift = [ { dest: '.github/workflows/pull-request.yml', deleted: false }, { dest: 'old.yml', deleted: true } ]
+
+test('pull request body lists local changes the sync overwrites', () => {
+    const body = pullRequestBody({ ...base, history: one, drift })
+
+    assert.match(body, /\n### ⚠️ Local changes overwritten\nThese files were changed in this repository after the last sync; this pull request restores them:\n- `\.github\/workflows\/pull-request\.yml`\n- `old\.yml` \(deleted\)\n/)
+})
+
+test('commit message lists overwritten local changes before the trailers', () => {
+    const message = commitMessage({ ...base, history: one, drift })
+
+    assert.match(message, /\n\nOverwritten local changes:\n- \.github\/workflows\/pull-request\.yml\n- old\.yml \(deleted\)\n\nSynced-From: /)
+})
+
+test('messages have no drift section without drift', () => {
+    assert.doesNotMatch(pullRequestBody({ ...base, history: one, drift: [] }), /Local changes overwritten/)
+    assert.doesNotMatch(commitMessage({ ...base, history: one }), /Overwritten local changes/)
+})

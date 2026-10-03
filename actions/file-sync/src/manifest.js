@@ -77,3 +77,17 @@ export async function findOwnershipConflicts(repoDir, name, destFiles) {
 
     return conflicts
 }
+
+// Lists managed files edited or deleted in the target repository since the manifest was written, as [{ dest, deleted }]
+export async function findDrift(repoDir, manifest) {
+    const drift = []
+    for (const dest of Object.keys(manifest.files).sort()) {
+        const file = path.join(repoDir, dest)
+        if (!await fs.pathExists(file)) {
+            drift.push({ dest, deleted: true })
+        } else if (sha256(await fs.readFile(file)) !== manifest.files[dest].sha256) {
+            drift.push({ dest, deleted: false })
+        }
+    }
+    return drift
+}

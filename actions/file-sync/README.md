@@ -134,6 +134,7 @@ Here are all the inputs [file-sync](https://github.com/webitel/reusable-workflow
 | `GH_INSTALLATION_TOKEN`   | Token from a GitHub App installation                                                                                                           | **`GH_PAT` or `GH_INSTALLATION_TOKEN` required** | N/A                            |
 | `CONFIG_PATH`             | Path to the sync configuration file                                                                                                            | **No**                                           | .github/sync.yml               |
 | `SYNC_NAME`               | Name of the sync stream; the manifest is written to `.github/file-sync/<SYNC_NAME>.yml` in target repositories                                | **No**                                           | `CONFIG_PATH` without `.github/` and extension, `/` → `-` |
+| `ON_DRIFT`                | `warn`: overwrite synced files edited in the target and list them in the PR; `fail`: skip such a repository and fail the run                  | **No**                                           | warn                           |
 | `IS_FINE_GRAINED`         | Labels the GH_PAT as a fine grained token                                                                                                      | **No**                                           | false                          |
 | `PR_LABELS`               | Labels which will be added to the pull request. Set to false to turn off                                                                       | **No**                                           | sync                           |
 | `ASSIGNEES`               | Users to assign to the pull request                                                                                                            | **No**                                           | N/A                            |
@@ -415,6 +416,7 @@ files:
 - Directories are listed file by file; files with `replace: false` are not listed, because the target repository owns them once they exist.
 - The manifest only changes together with the synced files, so source commits that do not affect a repository do not open sync pull requests there.
 - `source.sha` marks the last synced source commit. The next sync lists the source commits since then that touched the sync config or the sources of changed files; this needs the source repository checked out with `fetch-depth: 0` (a warning is logged otherwise).
+- **Drift**: a managed file whose content no longer matches its hash was edited (or deleted) in the target repository after the last sync. With `ON_DRIFT: warn` (default) the sync restores it, logs a warning and lists it under "Local changes overwritten" in the PR and in the commit message; with `ON_DRIFT: fail` the repository is skipped and the run fails.
 - Each sync config should use its own `SYNC_NAME` (the default derived from `CONFIG_PATH` already differs per config). A warning is logged when a file is listed in the manifest of another stream.
 
 ### Syncing branches

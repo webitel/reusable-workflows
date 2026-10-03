@@ -135,6 +135,14 @@ try {
         })
     }
 
+    context.ON_DRIFT = getInput({
+        key: 'ON_DRIFT',
+        default: 'warn'
+    })
+    if (![ 'warn', 'fail' ].includes(context.ON_DRIFT)) {
+        throw new Error(`ON_DRIFT must be warn or fail, got ${ context.ON_DRIFT }`)
+    }
+
     context.SYNC_NAME = getInput({
         key: 'SYNC_NAME',
         default: manifestName(context.CONFIG_PATH)
