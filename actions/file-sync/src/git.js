@@ -205,6 +205,11 @@ export default class Git {
         }
     }
 
+    // SHA of the source repository checkout the action runs in
+    async sourceSha() {
+        return execCmd(`git rev-parse HEAD`, process.cwd())
+    }
+
     async getLastCommitSha() {
         this.lastCommitSha = await execCmd(
             `git rev-parse HEAD`,

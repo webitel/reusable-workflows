@@ -4,6 +4,8 @@ import fs from 'fs-extra'
 import * as path from 'path'
 import { getInput } from 'action-input-parser'
 
+import { manifestName } from './manifest.js'
+
 const REPLACE_DEFAULT = true
 const TEMPLATE_DEFAULT = false
 const DELETE_ORPHANED_DEFAULT = false
@@ -151,6 +153,11 @@ try {
             disableable: true
         })
     }
+
+    context.SYNC_NAME = getInput({
+        key: 'SYNC_NAME',
+        default: manifestName(context.CONFIG_PATH)
+    })
 
     core.setSecret(context.GITHUB_TOKEN)
 

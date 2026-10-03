@@ -22,6 +22,11 @@ inputs:
     description: |
       The path for the sync configuration file
 
+  SYNC_NAME:
+    required: false
+    description: |
+      Name of the sync stream. The manifest of managed files is written to .github/file-sync/<SYNC_NAME>.yml in target repositories. Defaults to CONFIG_PATH without the .github/ directory and extension, with / replaced by -
+
   IS_FINE_GRAINED:
     required: false
     description: |

@@ -117,65 +117,43 @@ export async function write(src, dest, context) {
     await fs.outputFile(dest, content)
 }
 
+// Copies (or renders, for templates) src to dest and returns the files written, as { source, dest } pairs.
 export async function copy(src, dest, isDirectory, file) {
-    const deleteOrphaned = isDirectory && file.deleteOrphaned
-    const exclude = file.exclude
+    const exclude = file.exclude || []
 
-    const filterFunc = (file) => {
+    // Exclude entries are source paths of files, or of folders when they end with a slash
+    const isExcluded = (sourcePath) => exclude.some((entry) => entry.endsWith('/') ? sourcePath.startsWith(entry) : sourcePath === entry)
 
-        if (exclude !== undefined) {
-
-            // Check if file-path is one of the present filepaths in the excluded paths
-            // This has presedence over the single file, and therefore returns before the single file check
-            let filePath = ''
-            if (file.endsWith('/')) {
-                // File item is a folder
-                filePath = file
-            } else {
-                // File item is a file
-                filePath = file.split('\/').slice(0, -1).join('/') + '/'
-            }
-
-            if (exclude.includes(filePath)) {
-                core.debug(`Excluding file ${ file } since its path is included as one of the excluded paths.`)
-                return false
-            }
-
-
-            // Or if the file itself is in the excluded files
-            if (exclude.includes(file)) {
-                core.debug(`Excluding file ${ file } since it is explicitly added in the exclusion list.`)
-                return false
-            }
+    const copyFile = async (source, target) => {
+        if (file.template) {
+            core.debug(`Render file ${ source } to ${ target }`)
+            await write(source, target, file.template)
+        } else {
+            core.debug(`Copy ${ source } to ${ target }`)
+            await fs.copy(source, target)
         }
-        return true
     }
 
-    if (file.template) {
-        if (isDirectory) {
-            core.debug(`Render all files in directory ${ src } to ${ dest }`)
-
-            const srcFileList = await listFiles(src)
-            for (const srcFile of srcFileList) {
-                if (!filterFunc(srcFile)) { continue }
-
-                const srcPath = path.join(src, srcFile)
-                const destPath = path.join(dest, srcFile)
-                await write(srcPath, destPath, file.template)
+    const written = []
+    if (isDirectory) {
+        for (const relative of (await listFiles(src)).sort()) {
+            const source = path.join(src, relative)
+            if (isExcluded(source)) {
+                core.debug(`Excluding file ${ source }`)
+                continue
             }
-        } else {
-            core.debug(`Render file ${ src } to ${ dest }`)
 
-            await write(src, dest, file.template)
+            const target = path.join(dest, relative)
+            await copyFile(source, target)
+            written.push({ source, dest: target })
         }
     } else {
-        core.debug(`Copy ${ src } to ${ dest }`)
-        await fs.copy(src, dest, file.exclude !== undefined ? { filter: filterFunc } : undefined)
+        await copyFile(src, dest)
+        written.push({ source: src, dest })
     }
 
-
     // If it is a directory and deleteOrphaned is enabled - check if there are any files that were removed from source dir and remove them in destination dir
-    if (deleteOrphaned) {
+    if (isDirectory && file.deleteOrphaned) {
 
         const srcFileList = await listFiles(src)
         const destFileList = await listFiles(dest)
@@ -186,7 +164,7 @@ export async function copy(src, dest, isDirectory, file) {
                 const filePath = path.join(dest, destFile)
                 core.debug(`Found an orphaned file in the target repo - ${ filePath }`)
 
-                if (file.exclude !== undefined && file.exclude.includes(path.join(src, destFile))) {
+                if (isExcluded(path.join(src, destFile))) {
                     core.debug(`Excluding file ${ destFile }`)
                 } else {
                     core.debug(`Removing file ${ destFile }`)
@@ -195,6 +173,8 @@ export async function copy(src, dest, isDirectory, file) {
             }
         }
     }
+
+    return written
 }
 
 export async function remove(src) {

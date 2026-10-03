@@ -1,10 +1,12 @@
 import * as core from '@actions/core'
 import * as fs from 'fs'
+import * as path from 'path'
 
 import Git from './git.js'
 import { forEach, dedent, addTrailingSlash, pathIsDirectory, copy, remove, arrayEquals, setNunjucksTags, prefixed } from './helpers.js'
 
 import { parseConfig, default as config } from './config.js'
+import { manifestPath, readManifest, serializeManifest, sameFiles, sha256, findOwnershipConflicts } from './manifest.js'
 
 const {
     COMMIT_EACH_FILE,
@@ -26,7 +28,10 @@ const {
     NUNJUCKS_VARIABLE_START,
     NUNJUCKS_VARIABLE_END,
     NUNJUCKS_COMMENT_START,
-    NUNJUCKS_COMMENT_END
+    NUNJUCKS_COMMENT_END,
+    CONFIG_PATH,
+    SYNC_NAME,
+    GITHUB_REPOSITORY
 } = config
 
 async function run() {
@@ -73,8 +78,12 @@ async function run() {
                 }
             }
 
+            const manifestFile = manifestPath(SYNC_NAME)
+            const previousManifest = await readManifest(path.join(git.workingDir, manifestFile))
+
             core.info(`Locally syncing file(s) between source and target repository`)
             const modified = []
+            const managed = []
 
             // Loop through all selected files of the source repo
             await forEach(item.files, async (file) => {
@@ -92,7 +101,10 @@ async function run() {
 
                 if (isDirectory) core.info(`Source is directory`)
 
-                await copy(source, dest, isDirectory, file)
+                const written = await copy(source, dest, isDirectory, file)
+
+                // Files with replace: false belong to the target repository once created
+                if (file.replace !== false) managed.push(...written)
 
                 await git.add(file.dest)
 
@@ -131,6 +143,32 @@ async function run() {
                     })
                 }
             })
+
+            const manifestFiles = {}
+            for (const file of managed) {
+                manifestFiles[path.relative(git.workingDir, file.dest)] = {
+                    source: path.normalize(file.source),
+                    sha256: sha256(await fs.promises.readFile(file.dest))
+                }
+            }
+
+            for (const conflict of await findOwnershipConflicts(git.workingDir, SYNC_NAME, Object.keys(manifestFiles))) {
+                core.warning(`${ conflict.dest } is also managed by the "${ conflict.stream }" sync stream`)
+            }
+
+            // Rewrite the manifest only together with file changes, so an unrelated source commit does not produce a sync
+            const filesChanged = modified.length > 0 || await git.hasChanges()
+            if (filesChanged || previousManifest === undefined || !sameFiles(previousManifest.files, manifestFiles)) {
+                await fs.promises.mkdir(path.dirname(path.join(git.workingDir, manifestFile)), { recursive: true })
+                await fs.promises.writeFile(path.join(git.workingDir, manifestFile), serializeManifest({
+                    name: SYNC_NAME,
+                    repository: GITHUB_REPOSITORY,
+                    config: path.normalize(CONFIG_PATH),
+                    sha: await git.sourceSha(),
+                    files: manifestFiles
+                }))
+                await git.add(manifestFile)
+            }
 
             if (DRY_RUN) {
                 core.warning('Dry run, no changes will be pushed')

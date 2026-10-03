@@ -8,7 +8,7 @@
     "lint": "eslint ./src",
     "start": "node src/index.js",
     "build": "rollup -c",
-    "test": "node --test test/"
+    "test": "node --test 'test/*.test.js'"
   },
   "repository": {
     "type": "git",
