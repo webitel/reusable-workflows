@@ -50,7 +50,11 @@ export function commitMessage(context) {
     if (history.commits.length > 0) {
         sections.push([ 'Changes:', ...history.commits.map((c) => `- ${ c.subject } (${ short(c.sha) })`) ].join('\n'))
     }
-    sections.push([ 'Files:', ...files.map((f) => `- ${ f.status } ${ f.dest }${ f.source ? ` <- ${ f.source }` : '' }`) ].join('\n'))
+    const fileLine = (f) => {
+        if (!f.source) return `- ${ f.status } ${ f.dest }`
+        return f.status === 'D' ? `- D ${ f.dest } (was ${ f.source })` : `- ${ f.status } ${ f.dest } <- ${ f.source }`
+    }
+    sections.push([ 'Files:', ...files.map(fileLine) ].join('\n'))
     if (context.drift?.length > 0) {
         sections.push([ 'Overwritten local changes:', ...context.drift.map((d) => `- ${ driftLine(d) }`) ].join('\n'))
     }
@@ -80,7 +84,11 @@ export function pullRequestBody(context) {
         '### Files',
         '| | File | Source |',
         '|---|---|---|',
-        ...files.map((f) => `| ${ f.status } | \`${ f.dest }\` | ${ f.source ? `[\`${ f.source }\`](${ repoUrl }/blob/${ history.to }/${ f.source }) ` : '' }|`)
+        ...files.map((f) => {
+            let source = ''
+            if (f.source) source = f.status === 'D' ? `\`${ f.source }\` (removed) ` : `[\`${ f.source }\`](${ repoUrl }/blob/${ history.to }/${ f.source }) `
+            return `| ${ f.status } | \`${ f.dest }\` | ${ source }|`
+        })
     ].join('\n'))
 
     if (context.drift?.length > 0) {

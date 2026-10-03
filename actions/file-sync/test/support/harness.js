@@ -20,9 +20,11 @@ export function git(cwd, ...args) {
     return execFileSync('git', args, { cwd, env: { PATH: process.env.PATH, ...GIT_ENV }, encoding: 'utf8' }).trim()
 }
 
+// Writes files relative to dir; a null content deletes the file.
 async function writeFiles(dir, files) {
     for (const [ file, content ] of Object.entries(files)) {
-        await fs.outputFile(path.join(dir, file), content)
+        if (content === null) await fs.remove(path.join(dir, file))
+        else await fs.outputFile(path.join(dir, file), content)
     }
 }
 

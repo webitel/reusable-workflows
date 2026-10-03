@@ -42313,6 +42313,11 @@ try {
       type: "boolean",
       default: false
     }),
+    DELETE_REMOVED: libExports.getInput({
+      key: "DELETE_REMOVED",
+      type: "boolean",
+      default: true
+    }),
     SKIP_CLEANUP: libExports.getInput({
       key: "SKIP_CLEANUP",
       type: "boolean",
@@ -49495,7 +49500,11 @@ function commitMessage(context) {
   if (history.commits.length > 0) {
     sections.push(["Changes:", ...history.commits.map((c) => `- ${c.subject} (${short(c.sha)})`)].join("\n"));
   }
-  sections.push(["Files:", ...files.map((f) => `- ${f.status} ${f.dest}${f.source ? ` <- ${f.source}` : ""}`)].join("\n"));
+  const fileLine = (f) => {
+    if (!f.source) return `- ${f.status} ${f.dest}`;
+    return f.status === "D" ? `- D ${f.dest} (was ${f.source})` : `- ${f.status} ${f.dest} <- ${f.source}`;
+  };
+  sections.push(["Files:", ...files.map(fileLine)].join("\n"));
   if (context.drift?.length > 0) {
     sections.push(["Overwritten local changes:", ...context.drift.map((d) => `- ${driftLine(d)}`)].join("\n"));
   }
@@ -49520,7 +49529,11 @@ function pullRequestBody(context) {
     "### Files",
     "| | File | Source |",
     "|---|---|---|",
-    ...files.map((f) => `| ${f.status} | \`${f.dest}\` | ${f.source ? `[\`${f.source}\`](${repoUrl}/blob/${history.to}/${f.source}) ` : ""}|`)
+    ...files.map((f) => {
+      let source = "";
+      if (f.source) source = f.status === "D" ? `\`${f.source}\` (removed) ` : `[\`${f.source}\`](${repoUrl}/blob/${history.to}/${f.source}) `;
+      return `| ${f.status} | \`${f.dest}\` | ${source}|`;
+    })
   ].join("\n"));
   if (context.drift?.length > 0) {
     sections.push([
@@ -49586,13 +49599,19 @@ const {
   SKIP_PR,
   FORK,
   GIT_EMAIL,
-  ON_DRIFT
+  ON_DRIFT,
+  DELETE_REMOVED
 } = config;
 const runUrl = () => `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID || 0}`;
 async function syncFiles(git, files) {
   const managed = [];
+  const retained = [];
   await forEach(files, async (file) => {
-    if (fs$2.existsSync(file.source) === false) return warning(`Source ${file.source} not found`);
+    if (fs$2.existsSync(file.source) === false) {
+      retained.push(path.normalize(file.dest));
+      return warning(`Source ${file.source} not found`);
+    }
+    if (file.replace === false) retained.push(path.normalize(file.dest));
     const localDestination = `${git.workingDir}/${file.dest}`;
     if (fs$2.existsSync(localDestination) && file.replace === false) return warning(`File(s) already exist(s) in destination and 'replace' option is set to false`);
     const isDirectory = await pathIsDirectory(file.source);
@@ -49603,7 +49622,15 @@ async function syncFiles(git, files) {
     if (file.replace !== false) managed.push(...written);
     await git.add(file.dest);
   });
-  return managed;
+  return { managed, retained };
+}
+async function deleteRemoved(git, previousManifest, manifestFiles, retained) {
+  const isRetained = (dest) => retained.some((r) => dest === r || dest.startsWith(addTrailingSlash(r)));
+  for (const dest of Object.keys(previousManifest?.files || {})) {
+    if (manifestFiles[dest] !== void 0 || isRetained(dest)) continue;
+    info(`Deleting ${dest}: no longer in the sync config`);
+    await fs$2.promises.rm(path.join(git.workingDir, dest), { force: true });
+  }
 }
 async function manifestEntries(git, managed) {
   const entries = {};
@@ -49684,8 +49711,9 @@ async function syncRepository(git, item) {
     warning(`${d.dest} was ${d.deleted ? "deleted" : "changed"} in ${repoName} after the last sync; the sync overwrites it`);
   }
   info(`Locally syncing file(s) between source and target repository`);
-  const managed = await syncFiles(git, item.files);
+  const { managed, retained } = await syncFiles(git, item.files);
   const manifestFiles = await manifestEntries(git, managed);
+  if (DELETE_REMOVED) await deleteRemoved(git, previousManifest, manifestFiles, retained);
   for (const conflict of await findOwnershipConflicts(git.workingDir, SYNC_NAME, Object.keys(manifestFiles))) {
     warning(`${conflict.dest} is also managed by the "${conflict.stream}" sync stream`);
   }

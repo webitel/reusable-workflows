@@ -24,17 +24,24 @@ const {
     SKIP_PR,
     FORK,
     GIT_EMAIL,
-    ON_DRIFT
+    ON_DRIFT,
+    DELETE_REMOVED
 } = config
 
 const runUrl = () => `${ GITHUB_SERVER_URL }/${ GITHUB_REPOSITORY }/actions/runs/${ process.env.GITHUB_RUN_ID || 0 }`
 
-// Copies the configured files into the target working directory and returns the managed ones as { source, dest } pairs.
+// Copies the configured files into the target working directory. Returns the managed files as { source, dest } pairs,
+// and the configured dest paths that the target keeps as they are (missing source or replace: false).
 async function syncFiles(git, files) {
     const managed = []
+    const retained = []
 
     await forEach(files, async (file) => {
-        if (fs.existsSync(file.source) === false) return core.warning(`Source ${ file.source } not found`)
+        if (fs.existsSync(file.source) === false) {
+            retained.push(path.normalize(file.dest))
+            return core.warning(`Source ${ file.source } not found`)
+        }
+        if (file.replace === false) retained.push(path.normalize(file.dest))
 
         const localDestination = `${ git.workingDir }/${ file.dest }`
         if (fs.existsSync(localDestination) && file.replace === false) return core.warning(`File(s) already exist(s) in destination and 'replace' option is set to false`)
@@ -53,7 +60,19 @@ async function syncFiles(git, files) {
         await git.add(file.dest)
     })
 
-    return managed
+    return { managed, retained }
+}
+
+// Deletes files of the previous manifest that the config no longer produces, except retained ones
+async function deleteRemoved(git, previousManifest, manifestFiles, retained) {
+    const isRetained = (dest) => retained.some((r) => dest === r || dest.startsWith(addTrailingSlash(r)))
+
+    for (const dest of Object.keys(previousManifest?.files || {})) {
+        if (manifestFiles[dest] !== undefined || isRetained(dest)) continue
+
+        core.info(`Deleting ${ dest }: no longer in the sync config`)
+        await fs.promises.rm(path.join(git.workingDir, dest), { force: true })
+    }
 }
 
 async function manifestEntries(git, managed) {
@@ -163,8 +182,9 @@ export async function syncRepository(git, item) {
     }
 
     core.info(`Locally syncing file(s) between source and target repository`)
-    const managed = await syncFiles(git, item.files)
+    const { managed, retained } = await syncFiles(git, item.files)
     const manifestFiles = await manifestEntries(git, managed)
+    if (DELETE_REMOVED) await deleteRemoved(git, previousManifest, manifestFiles, retained)
 
     for (const conflict of await findOwnershipConflicts(git.workingDir, SYNC_NAME, Object.keys(manifestFiles))) {
         core.warning(`${ conflict.dest } is also managed by the "${ conflict.stream }" sync stream`)

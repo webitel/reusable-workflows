@@ -81,6 +81,11 @@ try {
             type: 'boolean',
             default: false
         }),
+        DELETE_REMOVED: getInput({
+            key: 'DELETE_REMOVED',
+            type: 'boolean',
+            default: true
+        }),
         SKIP_CLEANUP: getInput({
             key: 'SKIP_CLEANUP',
             type: 'boolean',

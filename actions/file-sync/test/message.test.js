@@ -141,3 +141,13 @@ test('messages have no drift section without drift', () => {
     assert.doesNotMatch(pullRequestBody({ ...base, history: one, drift: [] }), /Local changes overwritten/)
     assert.doesNotMatch(commitMessage({ ...base, history: one }), /Overwritten local changes/)
 })
+
+const removed = [ { status: 'D', dest: 'old.yml', source: 'golang/old.yml' } ]
+
+test('commit message names the former source of a deleted file', () => {
+    assert.match(commitMessage({ ...base, files: removed, history: one }), /\nFiles:\n- D old\.yml \(was golang\/old\.yml\)\n/)
+})
+
+test('pull request body does not link the former source of a deleted file', () => {
+    assert.match(pullRequestBody({ ...base, files: removed, history: one }), /\| D \| `old\.yml` \| `golang\/old\.yml` \(removed\) \|/)
+})
