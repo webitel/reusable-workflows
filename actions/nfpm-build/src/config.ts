@@ -234,6 +234,11 @@ export class FileValidator {
         core.info('Validating source files...');
 
         for (const file of contentFiles) {
+            // A symlink's src is the link target on the installed system, not a file in the workspace.
+            if (file.type === 'symlink') {
+                continue;
+            }
+
             try {
                 await fs.access(file.src);
                 core.info(`✅ Found: ${file.src}`);
