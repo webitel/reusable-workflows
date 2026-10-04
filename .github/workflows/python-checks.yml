@@ -115,10 +115,11 @@ jobs:
         id: build
         env:
           CHANGES: ${{ inputs.changes }}
+          SCAN_DEPENDENCIES: ${{ github.event_name != 'pull_request' }}
 
         run: |
           languages='[]'
-          if echo "$CHANGES" | jq -e 'any(. == "python" or . == "dependencies")' > /dev/null 2>&1; then
+          if echo "$CHANGES" | jq -e --argjson deps "$SCAN_DEPENDENCIES" 'any(. == "python" or (. == "dependencies" and $deps))' > /dev/null 2>&1; then
             languages=$(echo "$languages" | jq -c '. + [{"language": "python", "build-mode": "none"}]')
           fi
 
@@ -137,6 +138,9 @@ jobs:
       security-events: write
 
     continue-on-error: true
+    env:
+      CODEQL_ACTION_ANALYSIS_KEY: .github/workflows/python-checks.yml:analyze
+
     strategy:
       fail-fast: false
       matrix:

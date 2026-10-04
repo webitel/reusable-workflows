@@ -128,10 +128,11 @@ jobs:
         id: build
         env:
           CHANGES: ${{ inputs.changes }}
+          SCAN_DEPENDENCIES: ${{ github.event_name != 'pull_request' }}
 
         run: |
           languages='[]'
-          if echo "$CHANGES" | jq -e 'any(. == "go" or . == "dependencies")' > /dev/null 2>&1; then
+          if echo "$CHANGES" | jq -e --argjson deps "$SCAN_DEPENDENCIES" 'any(. == "go" or (. == "dependencies" and $deps))' > /dev/null 2>&1; then
             languages=$(echo "$languages" | jq -c '. + [{"language": "go", "build-mode": "autobuild"}]')
           fi
           
@@ -151,6 +152,9 @@ jobs:
       security-events: write
 
     continue-on-error: true
+    env:
+      CODEQL_ACTION_ANALYSIS_KEY: .github/workflows/golang-checks.yml:analyze
+
     strategy:
       fail-fast: false
       matrix:
