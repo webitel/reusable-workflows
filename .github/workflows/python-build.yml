@@ -17,6 +17,18 @@ on:
         type: string
         description: UTC build timestamp in ISO-8601 format
 
+      commit:
+        type: string
+        required: false
+        default: ''
+        description: Source commit SHA from the prepare outputs (the PR head on pull_request)
+
+      branch:
+        type: string
+        required: false
+        default: ''
+        description: Source branch from the prepare outputs (the PR head branch on pull_request)
+
       version-metadata:
         type: string
         required: false
@@ -213,8 +225,8 @@ jobs:
           INFO_VERSION: ${{ inputs.version }}
           INFO_BUILD: ${{ inputs.version-build }}
           INFO_PRERELEASE: ${{ inputs.prerelease }}
-          INFO_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-          INFO_BRANCH: ${{ github.head_ref || github.ref_name }}
+          INFO_COMMIT: ${{ inputs.commit }}
+          INFO_BRANCH: ${{ inputs.branch }}
           INFO_BUILD_DATE: ${{ inputs.build-timestamp }}
 
         run: |
