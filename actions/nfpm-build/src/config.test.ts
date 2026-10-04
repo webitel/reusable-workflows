@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ContentFileParser, ConfigGenerator } from './config';
+import { ContentFileParser, ConfigGenerator, FileValidator } from './config';
 import { ContentFile } from './config';
 
 // Mock @actions/core
@@ -108,5 +108,21 @@ src=./config.conf dst=/etc/app/config.conf type=config mode=0644 owner=app group
             expect(ContentFileParser.parse('')).toEqual([]);
             expect(ContentFileParser.parse('   ')).toEqual([]);
         });
+    });
+});
+
+describe('FileValidator', () => {
+    it('should skip symlink sources, which point into the target system', async () => {
+        const files: ContentFile[] = [
+            { src: '/usr/local/bin/does-not-exist', dst: '/opt/link', type: 'symlink' },
+        ];
+
+        await expect(FileValidator.validateSourceFiles(files)).resolves.toBeUndefined();
+    });
+
+    it('should fail when a file source is missing', async () => {
+        const files: ContentFile[] = [{ src: 'does-not-exist', dst: '/usr/bin/x' }];
+
+        await expect(FileValidator.validateSourceFiles(files)).rejects.toThrow('Source file not found: does-not-exist');
     });
 });

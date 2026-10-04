@@ -33659,6 +33659,9 @@ class FileValidator {
   static async validateSourceFiles(contentFiles) {
     info("Validating source files...");
     for (const file of contentFiles) {
+      if (file.type === "symlink") {
+        continue;
+      }
       try {
         await promises.access(file.src);
         info(`\u2705 Found: ${file.src}`);
