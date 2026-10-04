@@ -213,7 +213,7 @@ jobs:
           INFO_VERSION: ${{ inputs.version }}
           INFO_BUILD: ${{ inputs.version-build }}
           INFO_PRERELEASE: ${{ inputs.prerelease }}
-          INFO_COMMIT: ${{ github.sha }}
+          INFO_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
           INFO_BRANCH: ${{ github.head_ref || github.ref_name }}
           INFO_BUILD_DATE: ${{ inputs.build-timestamp }}
 
