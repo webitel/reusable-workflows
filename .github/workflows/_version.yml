@@ -69,6 +69,18 @@ on:
         value: ${{ jobs.parse.outputs.build-timestamp }}
         description: UTC build timestamp in ISO-8601 format
 
+      commit:
+        value: ${{ jobs.parse.outputs.commit }}
+        description: Source commit SHA; on pull_request the PR head commit, not the ephemeral merge commit
+
+      branch:
+        value: ${{ jobs.parse.outputs.branch }}
+        description: Source branch; on pull_request the PR head branch (e.g., main, v26.4, fix/PE-119/build-metadata)
+
+      commit-timestamp:
+        value: ${{ jobs.parse.outputs.commit-timestamp }}
+        description: UTC committer timestamp of the source commit in ISO-8601 format
+
       arch-matrix:
         value: ${{ jobs.parse.outputs.arch }}
         description: JSON array of target architectures
@@ -94,6 +106,9 @@ jobs:
       repository-environment: ${{ steps.release.outputs.repository-environment }}
       release-tag: ${{ steps.release.outputs.release-tag }}
       build-timestamp: ${{ steps.metadata.outputs.build-timestamp }}
+      commit: ${{ steps.source.outputs.commit }}
+      branch: ${{ steps.source.outputs.branch }}
+      commit-timestamp: ${{ steps.source.outputs.commit-timestamp }}
       arch: ${{ steps.matrix.outputs.arch }}
       codename: ${{ steps.matrix.outputs.codename }}
 
@@ -119,6 +134,25 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Resolve source commit
+        id: source
+        shell: bash
+        env:
+          # on pull_request github.sha / github.ref_name point at the ephemeral merge ref
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+
+        run: |
+          # the PR head is a parent of the checked-out merge commit, so the full clone already has it
+          commit_timestamp="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "$COMMIT")"
+
+          echo "Source commit: $COMMIT ($commit_timestamp) on $BRANCH"
+          {
+            echo "commit=$COMMIT"
+            echo "branch=$BRANCH"
+            echo "commit-timestamp=$commit_timestamp"
+          } >> "$GITHUB_OUTPUT"
 
       - name: For each git ref find the latest release branch
         id: latest-release-branch
@@ -328,7 +362,7 @@ jobs:
         if: ${{ steps.version.outputs.version != '' }}
         uses: webitel/reusable-workflows/actions/report-workflow-metadata@report-workflow-metadata-v1
         with:
-          sha: ${{ github.sha }}
+          sha: ${{ steps.source.outputs.commit }}
           version: ${{ steps.release.outputs.full-version }}
           # semver builds live outside the product release lines, so they share a single "main" line
           release-line: ${{ inputs.versioning == 'semver' && 'main' || steps.version.outputs.version }}
