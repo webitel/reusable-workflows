@@ -50201,24 +50201,62 @@ function issueBody(repository) {
     STATUS_ISSUE_MARKER
   ].join("\n");
 }
-async function publishStatus({ octokit, owner, repo, title, stream, comment }) {
-  const issues = await octokit.paginate(octokit.rest.issues.listForRepo, { owner, repo, state: "open", per_page: 100 });
-  let issue = issues.find((i) => !i.pull_request && i.body?.includes(STATUS_ISSUE_MARKER));
-  if (!issue) {
-    info(`Creating status issue "${title}"`);
-    issue = (await octokit.rest.issues.create({ owner, repo, title, body: issueBody(`${owner}/${repo}`) })).data;
+const isStatusIssue = (issue) => !issue.pull_request && issue.state !== "closed" && Boolean(issue.body?.includes(STATUS_ISSUE_MARKER));
+async function findStatusIssues(octokit, owner, repo) {
+  const listed = await octokit.paginate(octokit.rest.issues.listForRepo, { owner, repo, state: "open", per_page: 100 });
+  let found = listed.filter(isStatusIssue);
+  if (found.length === 0) {
     try {
-      await octokit.graphql("mutation($id: ID!) { pinIssue(input: { issueId: $id }) { issue { id } } }", { id: issue.node_id });
+      const { data } = await octokit.rest.search.issuesAndPullRequests({ q: `repo:${owner}/${repo} is:issue is:open in:body "file-sync:status"` });
+      found = data.items.filter(isStatusIssue);
     } catch (err) {
-      warning(`Could not pin status issue #${issue.number}, pin it manually: ${err.message}`);
+      debug(`Searching for the status issue failed: ${err.message}`);
     }
   }
+  return found.sort((a, b) => a.number - b.number);
+}
+async function closeIssue(octokit, owner, repo, number) {
+  await octokit.rest.issues.update({ owner, repo, issue_number: number, state: "closed", state_reason: "not_planned" });
+}
+async function upsertComment(octokit, owner, repo, issue, stream, comment) {
   const comments = await octokit.paginate(octokit.rest.issues.listComments, { owner, repo, issue_number: issue.number, per_page: 100 });
   const existing = comments.find((c) => c.body?.includes(streamMarker(stream)));
   if (existing) {
     await octokit.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: comment });
   } else {
     await octokit.rest.issues.createComment({ owner, repo, issue_number: issue.number, body: comment });
+  }
+}
+async function publishStatus({ octokit, owner, repo, title, stream, comment }) {
+  let [issue] = await findStatusIssues(octokit, owner, repo);
+  let created;
+  if (!issue) {
+    info(`Creating status issue "${title}"`);
+    created = (await octokit.rest.issues.create({ owner, repo, title, body: issueBody(`${owner}/${repo}`) })).data;
+    const [oldest] = await findStatusIssues(octokit, owner, repo);
+    if (oldest && oldest.number < created.number) {
+      info(`Status issue #${oldest.number} was created concurrently; closing #${created.number}`);
+      await closeIssue(octokit, owner, repo, created.number);
+      issue = oldest;
+    } else {
+      issue = created;
+      try {
+        await octokit.graphql("mutation($id: ID!) { pinIssue(input: { issueId: $id }) { issue { id } } }", { id: issue.node_id });
+      } catch (err) {
+        warning(`Could not pin status issue #${issue.number}, pin it manually: ${err.message}`);
+      }
+    }
+  }
+  try {
+    await upsertComment(octokit, owner, repo, issue, stream, comment);
+  } catch (err) {
+    if (created && issue.number === created.number) {
+      await closeIssue(octokit, owner, repo, created.number).catch(() => void 0);
+    }
+    if (err.status === 403) {
+      throw new Error(`file-sync needs the Issues: write permission on ${owner}/${repo} to update the status issue (${err.message})`);
+    }
+    throw err;
   }
   return issue;
 }

@@ -287,7 +287,7 @@ The pull request body ends with a hidden `<!-- file-sync:state … -->` marker t
 
 ### Status issue
 
-Set `STATUS_ISSUE` to a title (e.g. `File sync status`) to get one issue in the source repository that shows the state of every sync stream. The issue is found by a hidden marker, created and pinned on first use; each stream (`SYNC_NAME`) owns one comment in it and rewrites it on every run, so streams running at the same time never overwrite each other:
+Set `STATUS_ISSUE` to a title (e.g. `File sync status`) to get one issue in the source repository that shows the state of every sync stream. The oldest open issue with a hidden marker is used; it is created and pinned on first use (when streams start together and each creates one, the extra ones are closed again). Each stream (`SYNC_NAME`) owns one comment in it and rewrites it on every run, so streams running at the same time never overwrite each other:
 
 ```
 ### golang-sync · `golang/sync.yml`
@@ -308,7 +308,7 @@ Updated by run #123 at 2026-10-03 14:20 UTC from `1a2b3c4`.
 - "Synced to" is the source commit the target's base branch matches (from its manifest).
 - Sync pull requests open longer than 7 days are listed as needing attention.
 - The comment reflects the latest run, so schedule the sync workflow (e.g. daily) to keep it current after pull requests are merged; a run without changes pushes nothing.
-- The token needs `issues: write` on the source repository (for a GitHub App token: include the source repository and grant the Issues permission). Pinning may need more rights; a warning asks to pin it manually otherwise.
+- The token needs `issues: write` on the source repository (for a GitHub App token: include the source repository, grant the Issues permission and approve it for the installation). Without it the run logs a warning naming the missing permission and closes the issue it may have created. Pinning may need more rights; a warning asks to pin it manually otherwise.
 - Updating the issue never fails the sync; a dry run prints the comment instead.
 
 ### Generated-file header
