@@ -30,11 +30,14 @@ on:
           that combines the Go archive or object for a package main, 
           along with its dependencies into an executable binary.
           Traversed as: go build -ldflags="[ldflags]"
+          Take build metadata from prepare outputs (full-version, commit, branch, commit-timestamp,
+          build-timestamp), not from github.sha / github.ref_name: on pull_request those point at the merge ref.
           Example:
           ```
             ldflags: >
               -s -w
-              -X github.com/webitel/repository/cmd.commit=COMMIT_SHA
+              -X github.com/webitel/repository/cmd.version=<needs.prepare.outputs.full-version>
+              -X github.com/webitel/repository/cmd.commit=<needs.prepare.outputs.commit>
           ```
           
           See: https://pkg.go.dev/cmd/link
