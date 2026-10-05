@@ -133,7 +133,6 @@ runs:
         COMPONENT: ${{ inputs.component }}
         CODENAME: ${{ inputs.codename }}
         GPG_FINGERPRINT: ${{ steps.import-gpg-key.outputs.fingerprint }}
-        # deb-s3 parses the existing Packages manifests; without a UTF-8 locale Ruby reads them as US-ASCII
         LANG: C.UTF-8
         LC_ALL: C.UTF-8
 
