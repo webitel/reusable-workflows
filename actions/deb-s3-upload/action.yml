@@ -120,6 +120,7 @@ runs:
         trust_level: 5
 
     - name: Publish packages
+      id: publish
       shell: bash
       env:
         AWS_ACCESS_KEY_ID: ${{ inputs.s3-secret-id }}
@@ -156,5 +157,51 @@ runs:
 
         [[ -n "${AWS_REGION}" ]]                     && cmd+=(--s3-region "${AWS_REGION}")
         [[ "${S3_FORCE_PATH_STYLE}" == "true" ]]     && cmd+=(--force-path-style)
-        
-        "${cmd[@]}"
+
+        exec "${cmd[@]}"
+
+    - name: Release repository lock
+      if: always() && (steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')
+      shell: bash
+      env:
+        AWS_ACCESS_KEY_ID: ${{ inputs.s3-secret-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.s3-secret-key }}
+        AWS_REGION: ${{ inputs.s3-bucket-region }}
+        AWS_ENDPOINT_URL: ${{ inputs.s3-endpoint }}
+        S3_FORCE_PATH_STYLE: ${{ inputs.s3-force-path-style }}
+        S3_BUCKET_NAME: ${{ inputs.s3-bucket-name }}
+        CODENAME: ${{ inputs.codename }}
+
+      run: |
+        if [[ -z "${AWS_ENDPOINT_URL}" ]]; then
+          unset AWS_ENDPOINT_URL
+        fi
+
+        ruby - <<'RUBY'
+        require "aws-sdk-s3"
+        require "etc"
+        require "socket"
+
+        owner = "#{Etc.getlogin}@#{Socket.gethostname}"
+        bucket = ENV.fetch("S3_BUCKET_NAME")
+        s3 = Aws::S3::Client.new(
+          region: ENV["AWS_REGION"].to_s.empty? ? "us-east-1" : ENV["AWS_REGION"],
+          force_path_style: ENV["S3_FORCE_PATH_STYLE"] == "true",
+        )
+
+        %w[lockfile.lock lockfile].each do |name|
+          key = "dists/#{ENV.fetch("CODENAME")}/#{name}"
+          begin
+            body = s3.get_object(bucket: bucket, key: key).body.read
+          rescue Aws::S3::Errors::NoSuchKey
+            next
+          end
+
+          if body == owner
+            s3.delete_object(bucket: bucket, key: key)
+            puts "Removed #{key} held by #{owner}"
+          else
+            puts "Kept #{key} held by #{body}"
+          end
+        end
+        RUBY
