@@ -158,15 +158,8 @@ runs:
         [[ -n "${AWS_REGION}" ]]                     && cmd+=(--s3-region "${AWS_REGION}")
         [[ "${S3_FORCE_PATH_STYLE}" == "true" ]]     && cmd+=(--force-path-style)
 
-        # exec makes deb-s3 the step process, so the runner's cancellation signal reaches it
-        # and deb-s3 releases the repository lock itself; as a child of bash it was left
-        # orphaned and killed later with the lock still held.
         exec "${cmd[@]}"
 
-    # A lock in dists/<codename>/ blocks every later upload of that codename, so remove one
-    # this job still holds when the upload did not finish cleanly (e.g. it was killed).
-    # deb-s3 writes "<login>@<hostname>" into the lock files; only those matching this
-    # runner are removed, never a lock of a concurrent upload.
     - name: Release repository lock
       if: always() && (steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')
       shell: bash
@@ -196,7 +189,6 @@ runs:
           force_path_style: ENV["S3_FORCE_PATH_STYLE"] == "true",
         )
 
-        # Same order as deb-s3 unlock: the initial lock object, then the final one.
         %w[lockfile.lock lockfile].each do |name|
           key = "dists/#{ENV.fetch("CODENAME")}/#{name}"
           begin
