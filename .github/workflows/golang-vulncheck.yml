@@ -1,0 +1,134 @@
+name: Vulnerabilities
+
+on:
+  workflow_call:
+    inputs:
+      cgo-enabled:
+        type: boolean
+        required: false
+        default: false
+        description: Build with cgo
+
+      generated-code:
+        type: string
+        required: false
+        default: false
+        description: Download generated code
+
+      release-branch-pattern:
+        type: string
+        required: false
+        default: '^v[0-9]+\.[0-9]+$'
+        description: Release branches to scan besides the default branch
+
+      max-release-branches:
+        type: number
+        required: false
+        default: 4
+        description: Newest release branches to scan, 0 for all
+
+      analysis-key:
+        type: string
+        required: false
+        default: .github/workflows/workflow.yml:govulncheck
+        description: Analysis key and category of the push govulncheck analysis
+
+env:
+  CGO_ENABLED: ${{ inputs.cgo-enabled && '1' || '0' }}
+
+jobs:
+  branches:
+    name: List branches
+    runs-on: [ arc-runner-set ]
+    permissions:
+      contents: read
+
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+
+    steps:
+      - name: List default and release branches
+        id: list
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PATTERN: ${{ inputs.release-branch-pattern }}
+          MAX_RELEASE_BRANCHES: ${{ inputs.max-release-branches }}
+
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { data: { default_branch: defaultBranch, private: isPrivate } } = await github.rest.repos.get({ owner, repo });
+            if (isPrivate) {
+              core.notice('Private repository: code scanning needs GitHub Advanced Security, skipping.');
+              core.setOutput('matrix', '[]');
+              return;
+            }
+
+            const pattern = new RegExp(process.env.PATTERN);
+            const max = Number(process.env.MAX_RELEASE_BRANCHES);
+
+            const branches = await github.paginate(github.rest.repos.listBranches, { owner, repo, per_page: 100 });
+            const release = branches
+              .filter(b => b.name !== defaultBranch && pattern.test(b.name))
+              .sort((a, b) => b.name.localeCompare(a.name, 'en', { numeric: true }));
+
+            const selected = [
+              ...branches.filter(b => b.name === defaultBranch),
+              ...(max > 0 ? release.slice(0, max) : release),
+            ];
+
+            const matrix = selected.map(b => ({ branch: b.name, sha: b.commit.sha }));
+            core.info(`🔎 Branches to scan: ${matrix.map(b => b.branch).join(', ')}`);
+            core.setOutput('matrix', JSON.stringify(matrix));
+
+  govulncheck:
+    name: Vulnerabilities (${{ matrix.branch }})
+    needs: [ branches ]
+    if: needs.branches.outputs.matrix != '[]'
+    runs-on: [ arc-backend-runner-set ]
+    permissions:
+      security-events: write
+
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+
+    env:
+      CODEQL_ACTION_ANALYSIS_KEY: ${{ inputs.analysis-key }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.branches.outputs.matrix) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.sha }}
+          persist-credentials: false
+
+      - name: Download generated code
+        if: inputs.generated-code == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: generated-code
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+
+      - name: Run govulncheck and save to file
+        run: |
+          govulncheck -C . -format sarif ./... > report.sarif
+
+          # Workaround: govulncheck emits duplicate tags in SARIF rules, which upload-sarif rejects.
+          jq '(.runs[].tool.driver.rules // [])[] |= (.properties.tags |= unique)' report.sarif > report.tmp && mv report.tmp report.sarif
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: report.sarif
+          ref: refs/heads/${{ matrix.branch }}
+          sha: ${{ matrix.sha }}
+          category: ${{ inputs.analysis-key }}
+          matrix: 'null'
