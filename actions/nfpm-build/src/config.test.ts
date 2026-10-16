@@ -1,5 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
-import { ContentFileParser, ConfigGenerator, FileValidator } from './config';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as core from '@actions/core';
+import { promises as fs } from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { ConfigGenerator, ContentFileParser, FileValidator } from './config';
 import { ContentFile } from './config';
 
 // Mock @actions/core
@@ -101,6 +105,29 @@ src=./config.conf dst=/etc/app/config.conf type=config mode=0644 owner=app group
             expect(result).toHaveLength(1);
             expect(result[0].type).toBeUndefined();
         });
+
+        it('should create file_info once when several file_info keys are set', () => {
+            const result = ContentFileParser.parse('src=./app dst=/usr/bin/app group=app mode=0750 owner=app');
+
+            expect(result[0].file_info).toEqual({ mode: 0o750, owner: 'app', group: 'app' });
+        });
+
+        it('should warn about unknown keys', () => {
+            const result = ContentFileParser.parse('src=./app dst=/usr/bin/app color=red');
+
+            expect(result).toHaveLength(1);
+            expect(core.warning).toHaveBeenCalledWith('Unknown key "color" in content file definition');
+        });
+
+        it('should throw error for a line without key-value pairs', () => {
+            expect(() => ContentFileParser.parse('./app /usr/bin/app')).toThrow('Invalid key-value format: "./app /usr/bin/app"');
+        });
+
+        it('should log owner only when both owner and group are set', () => {
+            ContentFileParser.parse('src=./app dst=/usr/bin/app owner=app');
+
+            expect(core.info).toHaveBeenCalledWith('  ./app -> /usr/bin/app (file)');
+        });
     });
 
     describe('edge cases', () => {
@@ -124,5 +151,134 @@ describe('FileValidator', () => {
         const files: ContentFile[] = [{ src: 'does-not-exist', dst: '/usr/bin/x' }];
 
         await expect(FileValidator.validateSourceFiles(files)).rejects.toThrow('Source file not found: does-not-exist');
+    });
+
+    it('should pass when a file source exists', async () => {
+        const files: ContentFile[] = [{ src: 'package.json', dst: '/usr/share/x/package.json' }];
+
+        await expect(FileValidator.validateSourceFiles(files)).resolves.toBeUndefined();
+        expect(core.info).toHaveBeenCalledWith('✅ Found: package.json');
+    });
+});
+
+describe('ConfigGenerator', () => {
+    let dir: string;
+    let configFile: string;
+
+    const setInputs = (inputs: Record<string, string>) => {
+        vi.mocked(core.getInput).mockImplementation((name: string) => inputs[name] ?? '');
+    };
+
+    const generate = async (contentFiles: ContentFile[] = []): Promise<string> => {
+        await ConfigGenerator.generateNFPMConfig(configFile, contentFiles);
+        return fs.readFile(configFile, 'utf8');
+    };
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        dir = await fs.mkdtemp(path.join(os.tmpdir(), 'nfpm-config-'));
+        configFile = path.join(dir, 'nfpm.yaml');
+    });
+
+    afterEach(async () => {
+        await fs.rm(dir, { recursive: true, force: true });
+    });
+
+    it('should apply defaults for optional inputs', async () => {
+        setInputs({
+            'package-name': 'app',
+            'package-description': 'An app',
+            'maintainer': 'Dev <dev@example.com>',
+            'version': '1.2.3',
+        });
+
+        expect(await generate()).toBe([
+            'name: app',
+            'description: An app',
+            'vendor: ""',
+            'maintainer: Dev <dev@example.com>',
+            'homepage: ""',
+            'license: ""',
+            'arch: amd64',
+            'platform: linux',
+            'section: default',
+            'priority: optional',
+            'version: 1.2.3',
+            'release: "1"',
+            'prerelease: ""',
+            'version_metadata: ""',
+            'umask: 0o2',
+            '',
+        ].join('\n'));
+    });
+
+    it('should render dependencies, contents and scripts with unquoted octal modes', async () => {
+        setInputs({
+            'package-name': 'app',
+            'package-description': 'An app',
+            'vendor': 'Webitel',
+            'maintainer': 'Dev <dev@example.com>',
+            'homepage': 'https://example.com',
+            'license': 'MIT',
+            'arch': 'arm64',
+            'platform': 'linux',
+            'section': 'net',
+            'priority': 'extra',
+            'version': '1.2.3',
+            'release': '2',
+            'prerelease': 'rc1',
+            'version-metadata': 'git',
+            'umask': '022',
+            'depends': 'libc6, , curl',
+            'recommends': 'ca-certificates',
+            'suggests': 'jq',
+            'conflicts': 'app-legacy',
+            'replaces': 'app-legacy',
+            'provides': 'app-server',
+            'scripts': 'postinstall: ./postinstall.sh\npreremove: ./preremove.sh',
+        });
+
+        const yamlContent = await generate([
+            { src: './app', dst: '/usr/bin/app', file_info: { mode: 0o755 } },
+            { src: './app.conf', dst: '/etc/app.conf', type: 'config', file_info: { mode: 0o644, owner: 'app', group: 'app' } },
+            { src: './app.env', dst: '/etc/app.env', type: 'config', file_info: { mode: 0o644 } },
+        ]);
+
+        expect(yamlContent).toContain('umask: 0o22\n');
+        expect(yamlContent).toContain('depends:\n  - libc6\n  - curl\n');
+        expect(yamlContent).toContain('provides:\n  - app-server\n');
+        expect(yamlContent).toContain('scripts:\n  postinstall: ./postinstall.sh\n  preremove: ./preremove.sh\n');
+        expect(yamlContent.match(/mode: 0o644\n/g)).toHaveLength(2);
+        expect(yamlContent).toContain('mode: 0o755\n');
+        expect(yamlContent).not.toContain('PLACEHOLDER');
+        expect(core.warning).not.toHaveBeenCalled();
+    });
+
+    it('should skip dependency inputs that contain no names', async () => {
+        setInputs({ 'depends': ' , ', 'recommends': '   ' });
+
+        const yamlContent = await generate();
+
+        expect(yamlContent).not.toContain('depends');
+        expect(yamlContent).not.toContain('recommends');
+    });
+
+    it('should fall back to the default umask when the input is not octal', async () => {
+        setInputs({ 'umask': 'abc' });
+
+        expect(await generate()).toContain('umask: 0o2\n');
+    });
+
+    it('should warn about unknown script keys', async () => {
+        setInputs({ 'scripts': 'postinstall: ./postinstall.sh\npostupgrade: ./postupgrade.sh' });
+
+        expect(await generate()).toContain('postupgrade: ./postupgrade.sh');
+        expect(core.warning).toHaveBeenCalledWith('Unknown script key: postupgrade. Valid keys are: preinstall, postinstall, preremove, postremove');
+    });
+
+    it('should reject scripts that are not a YAML object', async () => {
+        setInputs({ 'scripts': 'just-a-string' });
+
+        await expect(generate()).rejects.toThrow('Failed to parse scripts: Scripts must be a YAML object');
     });
 });
