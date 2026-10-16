@@ -1,0 +1,158 @@
+name: CodeQL (scheduled)
+
+# Reusable workflow that re-runs CodeQL on the default branch on a schedule, so code-scanning results pick up
+# new CodeQL query releases even when nothing is pushed (the checks workflows only analyze changed languages).
+#
+# Behavior:
+#   - Skips private repositories (code scanning needs GitHub Advanced Security there).
+#   - Skips languages whose latest analysis of the default branch is younger than `max-age-days`.
+#   - Analyzes the default branch head under the analysis identity of the `analyze` job in <stack>-checks.yml
+#     (analysis key, category and matrix environment), so results continue the push analysis instead of
+#     duplicating alerts, and the overlay-base database used by pull requests is refreshed.
+
+on:
+  workflow_call:
+    inputs:
+      languages:
+        type: string
+        required: true
+        description: |
+          JSON array of the languages to analyze, as the matrix of the checks workflow builds them,
+          e.g. [{"language": "go", "build-mode": "autobuild"}, {"language": "actions", "build-mode": "none"}].
+
+      analysis-key:
+        type: string
+        required: true
+        description: Analysis key of the push analysis to continue, e.g. .github/workflows/golang-checks.yml:analyze.
+
+      runs-on:
+        type: string
+        required: false
+        default: arc-backend-runner-set
+        description: Runner label of the analyze job (the one the checks workflow uses).
+
+      cgo-enabled:
+        type: boolean
+        required: false
+        default: false
+        description: Build Go code with cgo, as golang-checks.yml does.
+
+      max-age-days:
+        type: number
+        required: false
+        default: 7
+        description: Skip languages analyzed on the default branch within the last N days. 0 analyzes all of them.
+
+env:
+  CGO_ENABLED: ${{ inputs.cgo-enabled && '1' || '0' }}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: [ arc-runner-set ]
+    permissions:
+      contents: read
+      security-events: read
+
+    outputs:
+      languages: ${{ steps.plan.outputs.languages }}
+      branch: ${{ steps.plan.outputs.branch }}
+      sha: ${{ steps.plan.outputs.sha }}
+
+    steps:
+      - name: Pick languages to analyze
+        id: plan
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          LANGUAGES: ${{ inputs.languages }}
+          MAX_AGE_DAYS: ${{ inputs.max-age-days }}
+
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            // Schedule payloads carry no repository object, so ask the API instead of github.event.repository.
+            const { data: { default_branch: branch, private: isPrivate } } = await github.rest.repos.get({ owner, repo });
+            if (isPrivate) {
+              core.notice('Private repository: code scanning needs GitHub Advanced Security, skipping.');
+              core.setOutput('languages', '[]');
+              return;
+            }
+
+            const { data: { commit: { sha } } } = await github.rest.repos.getBranch({ owner, repo, branch });
+            const ref = `refs/heads/${branch}`;
+            const languages = JSON.parse(process.env.LANGUAGES);
+            const categories = languages.map(l => `/language:${l.language}`);
+
+            // Newest first: the first analysis of a category is its latest one.
+            const latest = new Map();
+            try {
+              for await (const { data } of github.paginate.iterator(
+                github.rest.codeScanning.listRecentAnalyses,
+                { owner, repo, ref, tool_name: 'CodeQL', per_page: 100 },
+              )) {
+                for (const a of data) if (!latest.has(a.category)) latest.set(a.category, new Date(a.created_at));
+                if (categories.every(c => latest.has(c))) break;
+              }
+            } catch (err) {
+              // 404: nothing has been uploaded to code scanning yet
+              if (err.status !== 404) throw err;
+            }
+
+            const cutoff = new Date(Date.now() - Number(process.env.MAX_AGE_DAYS) * 86400 * 1000);
+            const stale = languages.filter(l => {
+              const at = latest.get(`/language:${l.language}`);
+              const fresh = at !== undefined && at > cutoff;
+              core.info(`${fresh ? '⏭️' : '🔎'} ${l.language}: last analyzed ${at ? at.toISOString() : 'never'}`);
+              return !fresh;
+            });
+
+            core.setOutput('languages', JSON.stringify(stale));
+            core.setOutput('branch', branch);
+            core.setOutput('sha', sha);
+
+  analyze:
+    name: CodeQL analyze (${{ matrix.language }})
+    needs: [ plan ]
+    if: needs.plan.outputs.languages != '[]'
+    runs-on: [ "${{ inputs.runs-on }}" ]
+    permissions:
+      security-events: write
+
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+
+    env:
+      # Same analysis key as the push analysis, so code scanning treats both as one configuration.
+      CODEQL_ACTION_ANALYSIS_KEY: ${{ inputs.analysis-key }}
+      # The default branch is analyzed even when dispatched from another one: build and upload the overlay-base database.
+      CODE_SCANNING_IS_ANALYZING_DEFAULT_BRANCH: 'true'
+
+    # The matrix holds only the language entries, so its environment matches the push analysis.
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.languages) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+
+      - name: Install dependencies
+        if: matrix.language == 'javascript'
+        run: npm ci --install-links --install-strategy shallow
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: "/language:${{ matrix.language }}"
+          ref: refs/heads/${{ needs.plan.outputs.branch }}
+          sha: ${{ needs.plan.outputs.sha }}
