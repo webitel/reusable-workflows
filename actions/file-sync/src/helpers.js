@@ -36,7 +36,7 @@ export function setNunjucksTags(tags) {
                 commentEnd: tags.commentEnd || '#}'
             }
         })
-    } catch (e) {
+    } catch {
         // Fallback to default configuration on error
     }
 }
@@ -44,7 +44,6 @@ export function setNunjucksTags(tags) {
 // From https://github.com/toniov/p-iteration/blob/master/lib/static-methods.js - MIT © Antonio V
 export async function forEach(array, callback) {
     for (let index = 0; index < array.length; index++) {
-        // eslint-disable-next-line callback-return
         await callback(array[index], index, array)
     }
 }
