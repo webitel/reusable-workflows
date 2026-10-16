@@ -1,14 +1,5 @@
 name: Vulnerabilities
 
-# Reusable workflow that re-runs govulncheck on a schedule, so code-scanning alerts follow new
-# advisories even when go.mod / go.sum do not change (golang-checks.yml only scans on dependency changes).
-#
-# Behavior:
-#   - Scans the default branch and every release branch matching `release-branch-pattern`
-#     (scheduled runs only see the default branch, so the branches are listed through the API).
-#   - Uploads each branch's SARIF to its own ref under the analysis identity of the govulncheck job in
-#     golang-checks.yml, so the scheduled analysis replaces the push analysis instead of duplicating alerts.
-
 on:
   workflow_call:
     inputs:
@@ -16,35 +7,31 @@ on:
         type: boolean
         required: false
         default: false
-        description: Load packages with cgo, as golang-checks.yml does.
+        description: Build with cgo
 
       generated-code:
         type: string
         required: false
         default: false
-        description: |
-          Download the generated-code artifact of the calling run before scanning.
-          The same artifact is used for every scanned branch.
+        description: Download generated code
 
       release-branch-pattern:
         type: string
         required: false
         default: '^v[0-9]+\.[0-9]+$'
-        description: Regular expression of the release branches to scan besides the default branch.
+        description: Release branches to scan besides the default branch
 
       max-release-branches:
         type: number
         required: false
         default: 4
-        description: Scan only the newest N release branches (by version). 0 scans all of them.
+        description: Newest release branches to scan, 0 for all
 
       analysis-key:
         type: string
         required: false
         default: .github/workflows/workflow.yml:govulncheck
-        description: |
-          Code-scanning analysis key and category of the push analysis to continue:
-          `<caller workflow path>:govulncheck`, the identity upload-sarif derives for golang-checks.yml.
+        description: Analysis key and category of the push govulncheck analysis
 
 env:
   CGO_ENABLED: ${{ inputs.cgo-enabled && '1' || '0' }}
@@ -70,7 +57,6 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            // Schedule payloads carry no repository object, so ask the API instead of github.event.repository.
             const { data: { default_branch: defaultBranch, private: isPrivate } } = await github.rest.repos.get({ owner, repo });
             if (isPrivate) {
               core.notice('Private repository: code scanning needs GitHub Advanced Security, skipping.');
@@ -108,7 +94,6 @@ jobs:
       contents: read
 
     env:
-      # Same analysis key as the push analysis, so code scanning treats both as one configuration.
       CODEQL_ACTION_ANALYSIS_KEY: ${{ inputs.analysis-key }}
 
     strategy:
@@ -146,5 +131,4 @@ jobs:
           ref: refs/heads/${{ matrix.branch }}
           sha: ${{ matrix.sha }}
           category: ${{ inputs.analysis-key }}
-          # The push analysis runs without a matrix; the branch matrix must not become part of the environment.
           matrix: 'null'
