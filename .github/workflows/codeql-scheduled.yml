@@ -1,15 +1,5 @@
 name: CodeQL (scheduled)
 
-# Reusable workflow that re-runs CodeQL on the default branch on a schedule, so code-scanning results pick up
-# new CodeQL query releases even when nothing is pushed (the checks workflows only analyze changed languages).
-#
-# Behavior:
-#   - Skips private repositories (code scanning needs GitHub Advanced Security there).
-#   - Skips languages whose latest analysis of the default branch is younger than `max-age-days`.
-#   - Analyzes the default branch head under the analysis identity of the `analyze` job in <stack>-checks.yml
-#     (analysis key, category and matrix environment), so results continue the push analysis instead of
-#     duplicating alerts, and the overlay-base database used by pull requests is refreshed.
-
 on:
   workflow_call:
     inputs:
@@ -70,7 +60,6 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            // Schedule payloads carry no repository object, so ask the API instead of github.event.repository.
             const { data: { default_branch: branch, private: isPrivate } } = await github.rest.repos.get({ owner, repo });
             if (isPrivate) {
               core.notice('Private repository: code scanning needs GitHub Advanced Security, skipping.');
@@ -83,7 +72,6 @@ jobs:
             const languages = JSON.parse(process.env.LANGUAGES);
             const categories = languages.map(l => `/language:${l.language}`);
 
-            // Newest first: the first analysis of a category is its latest one.
             const latest = new Map();
             try {
               for await (const { data } of github.paginate.iterator(
@@ -94,7 +82,6 @@ jobs:
                 if (categories.every(c => latest.has(c))) break;
               }
             } catch (err) {
-              // 404: nothing has been uploaded to code scanning yet
               if (err.status !== 404) throw err;
             }
 
@@ -117,18 +104,13 @@ jobs:
     runs-on: [ "${{ inputs.runs-on }}" ]
     permissions:
       security-events: write
-
-      # only required for workflows in private repositories
       actions: read
       contents: read
 
     env:
-      # Same analysis key as the push analysis, so code scanning treats both as one configuration.
       CODEQL_ACTION_ANALYSIS_KEY: ${{ inputs.analysis-key }}
-      # The default branch is analyzed even when dispatched from another one: build and upload the overlay-base database.
       CODE_SCANNING_IS_ANALYZING_DEFAULT_BRANCH: 'true'
 
-    # The matrix holds only the language entries, so its environment matches the push analysis.
     strategy:
       fail-fast: false
       matrix:
