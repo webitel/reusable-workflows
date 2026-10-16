@@ -33702,11 +33702,12 @@ function objectToYamlWithOctalStringReplace(obj, fieldNames, options) {
   const transformedObj = JSON.parse(JSON.stringify(obj));
   function replacePlaceholders(current) {
     if (typeof current === "object" && current !== null) {
-      for (const [key, value] of Object.entries(current)) {
+      const record = current;
+      for (const [key, value] of Object.entries(record)) {
         if (fieldNames.includes(key) && typeof value === "number" && Number.isInteger(value)) {
           const placeholder = placeholderMap.get(value);
           if (placeholder) {
-            current[key] = placeholder;
+            record[key] = placeholder;
           }
         } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
           replacePlaceholders(value);

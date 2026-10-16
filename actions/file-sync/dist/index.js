@@ -49155,7 +49155,7 @@ function setNunjucksTags(tags) {
         commentEnd: tags.commentEnd || "#}"
       }
     });
-  } catch (e) {
+  } catch {
   }
 }
 async function forEach(array, callback) {
@@ -50254,7 +50254,7 @@ async function publishStatus({ octokit, owner, repo, title, stream, comment }) {
       await closeIssue(octokit, owner, repo, created.number).catch(() => void 0);
     }
     if (err.status === 403) {
-      throw new Error(`file-sync needs the Issues: write permission on ${owner}/${repo} to update the status issue (${err.message})`);
+      throw new Error(`file-sync needs the Issues: write permission on ${owner}/${repo} to update the status issue (${err.message})`, { cause: err });
     }
     throw err;
   }

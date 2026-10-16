@@ -141,7 +141,7 @@ export async function publishStatus({ octokit, owner, repo, title, stream, comme
             await closeIssue(octokit, owner, repo, created.number).catch(() => undefined)
         }
         if (err.status === 403) {
-            throw new Error(`file-sync needs the Issues: write permission on ${ owner }/${ repo } to update the status issue (${ err.message })`)
+            throw new Error(`file-sync needs the Issues: write permission on ${ owner }/${ repo } to update the status issue (${ err.message })`, { cause: err })
         }
         throw err
     }

@@ -46,6 +46,8 @@ export interface NFPMConfig {
     scripts?: ScriptFiles;
 }
 
+type DependencyKey = 'depends' | 'recommends' | 'suggests' | 'conflicts' | 'replaces' | 'provides';
+
 export class ConfigGenerator {
     public static async generateNFPMConfig(configFile: string, contentFiles: ContentFile[]): Promise<void> {
         core.startGroup('Generating nFPM configuration...');
@@ -109,7 +111,7 @@ export class ConfigGenerator {
         core.endGroup()
     }
 
-    private static addDependencyArray(config: NFPMConfig, key: keyof NFPMConfig, input: string): void {
+    private static addDependencyArray(config: NFPMConfig, key: DependencyKey, input: string): void {
         if (input.trim()) {
             const deps = input
                 .split(',')
@@ -117,7 +119,7 @@ export class ConfigGenerator {
                 .filter(dep => dep);
 
             if (deps.length > 0) {
-                (config as any)[key] = deps;
+                config[key] = deps;
             }
         }
     }
@@ -250,7 +252,7 @@ export class FileValidator {
 }
 
 function objectToYamlWithOctalStringReplace(
-    obj: any,
+    obj: unknown,
     fieldNames: string[],
     options?: { includePrefix?: boolean }
 ): string {
@@ -260,7 +262,7 @@ function objectToYamlWithOctalStringReplace(
     const octalMap = new Map<number, string>();
     const placeholderMap = new Map<number, string>();
 
-    function collectOctalValues(current: any): void {
+    function collectOctalValues(current: unknown): void {
         if (typeof current === 'object' && current !== null) {
             for (const [key, value] of Object.entries(current)) {
                 if (fieldNames.includes(key) && typeof value === 'number' && Number.isInteger(value)) {
@@ -290,13 +292,14 @@ function objectToYamlWithOctalStringReplace(
 
     // Second pass: replace with placeholders
     const transformedObj = JSON.parse(JSON.stringify(obj));
-    function replacePlaceholders(current: any): void {
+    function replacePlaceholders(current: unknown): void {
         if (typeof current === 'object' && current !== null) {
-            for (const [key, value] of Object.entries(current)) {
+            const record = current as Record<string, unknown>;
+            for (const [key, value] of Object.entries(record)) {
                 if (fieldNames.includes(key) && typeof value === 'number' && Number.isInteger(value)) {
                     const placeholder = placeholderMap.get(value as number);
                     if (placeholder) {
-                        current[key] = placeholder;
+                        record[key] = placeholder;
                     }
                 } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
                     replacePlaceholders(value);

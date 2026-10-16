@@ -8,7 +8,7 @@ export default defineConfig({
             all: false,
             enabled: true,
             reporter: ["text"],
-            thresholds: { 100: true },
+            thresholds: { lines: 100, functions: 100, statements: 100, branches: 95 },
         },
     },
 });
