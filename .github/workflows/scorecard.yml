@@ -20,9 +20,7 @@ jobs:
     name: Analysis
     runs-on: ubuntu-latest
     permissions:
-      # Upload SARIF to code scanning
       security-events: write
-      # OIDC token to sign results published to the Scorecard API
       id-token: write
     steps:
       - name: Checkout code
