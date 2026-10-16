@@ -22,7 +22,7 @@ runs:
     - name: Parse package contents
       id: parse-package-contents
       if: inputs.parser == 'package-contents'
-      uses: actions/github-script@v9
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       with:
         script: |
           const content = `${{ inputs.content }}`.trim();
@@ -72,7 +72,7 @@ runs:
     - name: Parse scripts
       id: parse-scripts
       if: inputs.parser == 'scripts'
-      uses: actions/github-script@v9
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       with:
         script: |
           const content = `${{ inputs.content }}`.trim();
