@@ -121,8 +121,9 @@ jobs:
         run: |
           govulncheck -C . -format sarif ./... > report.sarif
 
-          # Workaround: govulncheck emits duplicate tags in SARIF rules, which upload-sarif rejects.
-          jq '(.runs[].tool.driver.rules // [])[] |= (.properties.tags |= unique)' report.sarif > report.tmp && mv report.tmp report.sarif
+          # Workaround: govulncheck emits duplicate rule tags and result stacks, which upload-sarif rejects.
+          jq '(.runs[].tool.driver.rules // [])[] |= (.properties.tags |= unique)
+            | (.runs[].results[]? | select(has("stacks")) | .stacks) |= unique' report.sarif > report.tmp && mv report.tmp report.sarif
 
       - name: Upload to code-scanning
         uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
