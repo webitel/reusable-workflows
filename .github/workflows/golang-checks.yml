@@ -91,6 +91,50 @@ jobs:
         with:
           sarif_file: report.sarif
 
+  gosec:
+    name: Security scan
+    if: contains(fromJSON(inputs.changes), 'go') || contains(fromJSON(inputs.changes), 'dependencies')
+    runs-on: [ arc-backend-runner-set ]
+    permissions:
+      security-events: write
+
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+
+    continue-on-error: true
+    env:
+      GOSEC_VERSION: v2.29.0
+      CODEQL_ACTION_ANALYSIS_KEY: .github/workflows/workflow.yml:gosec
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Download generated code
+        if: inputs.generated-code == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: generated-code
+
+      - name: Install gosec
+        run: go install -ldflags "-X main.Version=${GOSEC_VERSION}" "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}"
+
+      - name: Run gosec and save to file
+        run: |
+          gosec -no-fail -exclude-generated \
+            -exclude-dir=devenv -exclude-dir=scripts -exclude-dir=third_party -exclude-dir=builtin -exclude-dir=examples \
+            -fmt sarif -out report.sarif -stdout -verbose text \
+            ./...
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: report.sarif
+          category: gosec
+
   test:
     name: Unit testing
     if: contains(fromJSON(inputs.changes), 'go') || contains(fromJSON(inputs.changes), 'dependencies')
