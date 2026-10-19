@@ -13,7 +13,7 @@ on:
       analysis-key:
         type: string
         required: true
-        description: Analysis key of the push analysis to continue, e.g. .github/workflows/golang-checks.yml:analyze.
+        description: Analysis key of the push analysis to continue, e.g. .github/workflows/workflow.yml:analyze.
 
       runs-on:
         type: string

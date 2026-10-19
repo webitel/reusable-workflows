@@ -201,7 +201,7 @@ jobs:
 
     continue-on-error: true
     env:
-      CODEQL_ACTION_ANALYSIS_KEY: .github/workflows/golang-checks.yml:analyze
+      CODEQL_ACTION_ANALYSIS_KEY: .github/workflows/workflow.yml:analyze
 
     strategy:
       fail-fast: false
