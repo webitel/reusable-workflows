@@ -194,7 +194,7 @@ jobs:
     permissions: { checks: write, security-events: write }
     continue-on-error: true
     env:
-      CODEQL_ACTION_ANALYSIS_KEY: .github/workflows/node-checks.yml:analyze
+      CODEQL_ACTION_ANALYSIS_KEY: .github/workflows/workflow.yml:analyze
 
     strategy:
       fail-fast: false
