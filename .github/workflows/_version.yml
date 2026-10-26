@@ -36,6 +36,15 @@ on:
         default: bookworm
         description: Comma-separated list of Debian codenames (e.g., "bookworm" or "bookworm, jammy").
 
+      release-branch-component:
+        type: boolean
+        required: false
+        default: false
+        description: |
+          semver only: publish a release tag into the component of the release branch (vYY.M / vYY.MM)
+          that contains the tagged commit (e.g., 26.10-releases) instead of the shared "main" component.
+          The tagged commit must belong to exactly one release branch.
+
     outputs:
       version:
         value: ${{ jobs.parse.outputs.version }}
@@ -170,6 +179,38 @@ jobs:
 
           echo "Latest semver tag: ${latest_tag:-none}"
           echo "tag=$latest_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Find the release branch of the semver tag
+        id: release-branch
+        if: inputs.versioning == 'semver' && inputs.release-branch-component && startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          branches=()
+          while IFS= read -r ref; do
+            if [[ $ref =~ ^v[0-9]{2}\.([0-9]{1,2})$ ]] && (( 10#${BASH_REMATCH[1]} >= 1 && 10#${BASH_REMATCH[1]} <= 12 )); then
+              branches+=("$ref")
+            fi
+          done < <(git for-each-ref --contains "$GITHUB_SHA" --format='%(refname:lstrip=3)' refs/remotes/origin/)
+
+          if (( ${#branches[@]} == 0 )); then
+            echo "::error::tag $TAG is not on any release branch (vYY.M / vYY.MM)"
+            exit 1
+          fi
+          if (( ${#branches[@]} > 1 )); then
+            echo "::error::tag $TAG is on several release branches: ${branches[*]}"
+            exit 1
+          fi
+
+          branch=${branches[0]}
+          month=${branch#*.}
+          line="${branch:1:2}.$((10#$month))"
+          echo "Release branch: $branch (line $line)"
+          {
+            echo "branch=$branch"
+            echo "line=$line"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Get version
         id: version
@@ -317,11 +358,13 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
           TRIGGERED_BRANCH: ${{ inputs.triggered-branch }}
+          RELEASE_LINE: ${{ steps.release-branch.outputs.line }}
 
         with:
           script: |
             const versioning = process.env.VERSIONING;
             const version = process.env.VERSION;
+            const releaseLine = process.env.RELEASE_LINE;
             const pullRequest = context.payload.pull_request?.number;
             const build = String(context.runNumber);
 
@@ -333,7 +376,10 @@ jobs:
               },
               semver: {
                 isRelease: () => context.ref.startsWith('refs/tags/'),
-                release: () => ({ debComponent: 'main', repositoryEnvironment: 'releases', releaseTag: `v${version}` }),
+                // with release-branch-component, a tag publishes into its release branch's component
+                release: () => releaseLine
+                  ? { debComponent: `${releaseLine}-releases`, repositoryEnvironment: `${releaseLine}-releases`, releaseTag: `v${version}` }
+                  : { debComponent: 'main', repositoryEnvironment: 'releases', releaseTag: `v${version}` },
               },
             };
 
@@ -364,5 +410,6 @@ jobs:
         with:
           sha: ${{ steps.source.outputs.commit }}
           version: ${{ steps.release.outputs.full-version }}
-          # semver builds live outside the product release lines, so they share a single "main" line
-          release-line: ${{ inputs.versioning == 'semver' && 'main' || steps.version.outputs.version }}
+          # semver builds live outside the product release lines, so they share a single "main" line,
+          # unless release-branch-component put the tag on its release branch's line
+          release-line: ${{ steps.release-branch.outputs.line || (inputs.versioning == 'semver' && 'main' || steps.version.outputs.version) }}
