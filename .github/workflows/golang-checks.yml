@@ -50,6 +50,7 @@ jobs:
           install-mode: none
           problem-matchers: true
           skip-cache: true
+          args: ${{ github.event_name == 'pull_request' && '--new-from-rev=HEAD~1' || '' }}
 
   govulncheck:
     name: Vulnerabilities
