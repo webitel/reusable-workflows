@@ -91,53 +91,68 @@ func main() {
 		panic(err)
 	}
 
+	labels := append(inputs.Labels, prInfo.Pr.Labels...)
+	if err := backportTargets(ctx, log, client, NewShellCommandRunner(log), prInfo, targets, labels); err != nil {
+		log.Error("one or more backports failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func backportTargets(ctx context.Context, log *slog.Logger, client *github.Client, runner CommandRunner, prInfo PrInfo, targets []ghutil.Branch, labels []*github.Label) error {
+	var errs []error
 	for _, target := range targets {
 		log := log.With("target", target)
-		mergeBase, err := MergeBase(ctx, client.Repositories, prInfo.RepoOwner, prInfo.RepoName, target.Name, prInfo.Pr.GetBase().GetRef())
-		if err != nil {
-			log.Error("error finding merge-base", "error", err)
-		}
-
-		// Collect all commit SHAs from the PR to cherry-pick in order
-		var sourceSHAs []string
-		commits, _, err := client.PullRequests.ListCommits(ctx, prInfo.RepoOwner, prInfo.RepoName, prInfo.Pr.GetNumber(), &github.ListOptions{PerPage: 100})
-		if err != nil {
-			log.Error("error listing PR commits", "error", err)
-		} else {
-			for _, c := range commits {
-				if c.GetSHA() != "" {
-					sourceSHAs = append(sourceSHAs, c.GetSHA())
-				}
-			}
-		}
-
-		// Fallback to merge commit SHA if commit list is empty (e.g., API issue), keeping backward compatibility
-		fallbackSHA := prInfo.Pr.GetMergeCommitSHA()
-		if fallbackSHA == "" && len(sourceSHAs) > 0 {
-			fallbackSHA = sourceSHAs[len(sourceSHAs)-1]
-		}
-
-		opts := BackportOpts{
-			PullRequestNumber: prInfo.Pr.GetNumber(),
-			SourceSHA:         fallbackSHA,
-			SourceSHAs:        sourceSHAs,
-			SourceCommitDate:  prInfo.Pr.GetMergedAt().Time,
-			SourceTitle:       prInfo.Pr.GetTitle(),
-			SourceBody:        prInfo.Pr.GetBody(),
-			Target:            target,
-			Labels:            append(inputs.Labels, prInfo.Pr.Labels...),
-			Owner:             prInfo.RepoOwner,
-			Repository:        prInfo.RepoName,
-			MergeBase:         mergeBase,
-		}
-
-		commandRunner := NewShellCommandRunner(log)
-		prOut, err := Backport(ctx, log, client.PullRequests, client.Issues, client.Issues, commandRunner, opts)
+		pr, err := backportTarget(ctx, log, client, runner, prInfo, target, labels)
 		if err != nil {
 			log.Error("backport failed", "error", err)
+			errs = append(errs, fmt.Errorf("backport to %s: %w", target.Name, err))
 			continue
 		}
 
-		log.Info("backport successful", "url", prOut.GetURL())
+		log.Info("backport successful", "url", pr.GetURL())
 	}
+
+	return errors.Join(errs...)
+}
+
+func backportTarget(ctx context.Context, log *slog.Logger, client *github.Client, runner CommandRunner, prInfo PrInfo, target ghutil.Branch, labels []*github.Label) (*github.PullRequest, error) {
+	mergeBase, err := MergeBase(ctx, client.Repositories, prInfo.RepoOwner, prInfo.RepoName, target.Name, prInfo.Pr.GetBase().GetRef())
+	if err != nil {
+		return nil, fmt.Errorf("finding merge-base: %w", err)
+	}
+
+	// Collect all commit SHAs from the PR to cherry-pick in order
+	var sourceSHAs []string
+	commits, _, err := client.PullRequests.ListCommits(ctx, prInfo.RepoOwner, prInfo.RepoName, prInfo.Pr.GetNumber(), &github.ListOptions{PerPage: 100})
+	if err != nil {
+		log.Error("error listing PR commits", "error", err)
+	} else {
+		for _, c := range commits {
+			if c.GetSHA() != "" {
+				sourceSHAs = append(sourceSHAs, c.GetSHA())
+			}
+		}
+	}
+
+	// Fallback to merge commit SHA if commit list is empty (e.g., API issue), keeping backward compatibility
+	fallbackSHA := prInfo.Pr.GetMergeCommitSHA()
+	if fallbackSHA == "" && len(sourceSHAs) > 0 {
+		fallbackSHA = sourceSHAs[len(sourceSHAs)-1]
+	}
+
+	opts := BackportOpts{
+		PullRequestNumber: prInfo.Pr.GetNumber(),
+		SourceSHA:         fallbackSHA,
+		SourceSHAs:        sourceSHAs,
+		SourceCommitDate:  prInfo.Pr.GetMergedAt().Time,
+		SourceTitle:       prInfo.Pr.GetTitle(),
+		SourceBody:        prInfo.Pr.GetBody(),
+		Target:            target,
+		Labels:            labels,
+		Owner:             prInfo.RepoOwner,
+		Repository:        prInfo.RepoName,
+		MergeBase:         mergeBase,
+	}
+
+	return Backport(ctx, log, client.PullRequests, client.Issues, client.Issues, runner, opts)
 }
